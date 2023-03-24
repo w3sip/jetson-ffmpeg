@@ -9,6 +9,13 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <string>
+#include <sstream>
+#include <climits>
+#include <algorithm>
+#include <vector>
+
+#define STR_FMT(msg) (((std::ostringstream&)(std::ostringstream() << std::skipws << msg)).str().c_str())
 
 #define CHUNK_SIZE 4000000
 #define MAX_BUFFERS 32
@@ -19,6 +26,26 @@
     }
 
 using namespace std;
+
+
+//--------------------------------------------------------------------
+#define TRACE 1
+
+static void logmsg(const char *format)
+{
+    printf("%s\n", format);
+}
+
+
+#if TRACE
+static void tracelogmsg(const char *format)
+{
+    printf("%s\n", format);
+}
+#else
+#define tracelogmsg(format)
+#endif
+
 
 //--------------------------------------------------------------------
 struct nvmpictx
@@ -44,6 +71,8 @@ struct nvmpictx
     unsigned int frame_size[MAX_NUM_PLANES];
     unsigned int frame_linesize[MAX_NUM_PLANES];
     unsigned long long timestamp[MAX_BUFFERS];
+    int packetsSubmitted{0};
+    int framesReceived{0};
 };
 
 //--------------------------------------------------------------------
@@ -93,7 +122,6 @@ static void respondToResolutionEvent(v4l2_format &format, v4l2_crop &crop,nvmpic
 
     ctx->numberCaptureBuffers = minimumDecoderCaptureBuffers + 5;
 
-
     switch (format.fmt.pix_mp.colorspace) {
     case V4L2_COLORSPACE_SMPTE170M:
         if (format.fmt.pix_mp.quantization == V4L2_QUANTIZATION_DEFAULT) {
@@ -142,17 +170,20 @@ static void respondToResolutionEvent(v4l2_format &format, v4l2_crop &crop,nvmpic
         TEST_ERROR(ret < 0, "Failed to create buffers", ret);
     }
 
-    ctx->dec->capture_plane.reqbufs(V4L2_MEMORY_DMABUF, ctx->numberCaptureBuffers);
+    /* Request buffers on decoder capture plane. Refer ioctl VIDIOC_REQBUFS */
+    ret = ctx->dec->capture_plane.reqbufs(V4L2_MEMORY_DMABUF, ctx->numberCaptureBuffers);
     TEST_ERROR(ret < 0, "Error in decoder capture plane streamon", ret);
 
-    ctx->dec->capture_plane.setStreamStatus(true);
+    tracelogmsg("respondToResolutionEvent - setStreamStatus");
+    /* Decoder capture plane STREAMON. Refer ioctl VIDIOC_STREAMON */
+    ret = ctx->dec->capture_plane.setStreamStatus(true);
     TEST_ERROR(ret < 0, "Error in decoder capture plane streamon", ret);
 
-
+    /* Enqueue all the empty decoder capture plane buffers. */
     for (uint32_t i = 0; i < ctx->dec->capture_plane.getNumBuffers(); i++) {
         struct v4l2_buffer v4l2_buf;
         struct v4l2_plane planes[MAX_PLANES];
-
+tracelogmsg(STR_FMT("respondToResolutionEvent - getNumBuffers - " << i << " memset"));
         memset(&v4l2_buf, 0, sizeof(v4l2_buf));
         memset(planes, 0, sizeof(planes));
 
@@ -162,6 +193,7 @@ static void respondToResolutionEvent(v4l2_format &format, v4l2_crop &crop,nvmpic
         v4l2_buf.memory = V4L2_MEMORY_DMABUF;
         v4l2_buf.m.planes[0].m.fd = ctx->dmaBufferFileDescriptor[i];
 
+tracelogmsg(STR_FMT("respondToResolutionEvent - getNumBuffers - " << i << " qBuffer"));
         ret = ctx->dec->capture_plane.qBuffer(v4l2_buf, NULL);
         TEST_ERROR(ret < 0, "Error Qing buffer at output plane", ret);
     }
@@ -179,6 +211,7 @@ static void *dec_capture_loop_fcn(void *arg)
     struct v4l2_event v4l2Event;
     int ret,buf_index=0;
 
+    tracelogmsg("dec_capture_loop_fcn: enter");
     while (!ctx->dec->isInError() && !ctx->eos) {
         NvBuffer *dec_buffer;
 
@@ -186,12 +219,14 @@ static void *dec_capture_loop_fcn(void *arg)
         if (ret == 0) {
             switch (v4l2Event.type) {
             case V4L2_EVENT_RESOLUTION_CHANGE:
+                tracelogmsg("dec_capture_loop_fcn: res event");
                 respondToResolutionEvent(v4l2Format, v4l2Crop,ctx);
                 continue;
             }
         }
 
         if (!ctx->got_res_event) {
+            tracelogmsg("dec_capture_loop_fcn no event yet!");
             continue;
         }
 
@@ -202,6 +237,7 @@ static void *dec_capture_loop_fcn(void *arg)
 
             if (ctx->dec->capture_plane.dqBuffer(v4l2_buf, &dec_buffer, NULL, 0)){
                 if (errno == EAGAIN) {
+                    tracelogmsg("dec_capture_loop_fcn - sleeping!");
                     usleep(1000);
                 } else {
                     ERROR_MSG("Error while calling dequeue at capture plane");
@@ -265,7 +301,6 @@ static void *dec_capture_loop_fcn(void *arg)
                 ctx->timestamp[buf_index]= (v4l2_buf.timestamp.tv_usec % 1000000) + (v4l2_buf.timestamp.tv_sec * 1000000UL);
 
                 buf_index=(buf_index+1)%MAX_BUFFERS;
-
             }
 
             ctx->mutex->unlock();
@@ -295,9 +330,13 @@ nvmpictx* nvmpi_create_decoder(nvCodingType codingType,nvPixFormat pixFormat)
 
     nvmpictx* ctx=new nvmpictx;
 
+    tracelogmsg("nvmpi_create_decoder - enter");
+    tracelogmsg("nvmpi_create_decoder - enter2");
     ctx->dec = NvVideoDecoder::createVideoDecoder("dec0");
+    tracelogmsg(STR_FMT("nvmpi_create_decoder - decoder created " << (void*)ctx->dec));
     TEST_ERROR(!ctx->dec, "Could not create decoder",ret);
 
+    tracelogmsg("nvmpi_create_decoder - subscribing");
     ret=ctx->dec->subscribeEvent(V4L2_EVENT_RESOLUTION_CHANGE, 0, 0);
     TEST_ERROR(ret < 0, "Could not subscribe to V4L2_EVENT_RESOLUTION_CHANGE", ret);
 
@@ -325,18 +364,21 @@ nvmpictx* nvmpi_create_decoder(nvCodingType codingType,nvPixFormat pixFormat)
         break;
     }
 
+    tracelogmsg("nvmpi_create_decoder - setting output plane format");
     ret=ctx->dec->setOutputPlaneFormat(ctx->decoder_pixfmt, CHUNK_SIZE);
-
     TEST_ERROR(ret < 0, "Could not set output plane format", ret);
 
     //ctx->nalu_parse_buffer = new char[CHUNK_SIZE];
+    tracelogmsg("nvmpi_create_decoder - setting frame input mode");
     ret = ctx->dec->setFrameInputMode(0);
     TEST_ERROR(ret < 0, "Error in decoder setFrameInputMode for NALU", ret);
 
+    tracelogmsg("nvmpi_create_decoder - setting up the plane");
     ret = ctx->dec->output_plane.setupPlane(V4L2_MEMORY_USERPTR, 10, false, true);
     TEST_ERROR(ret < 0, "Error while setting up output plane", ret);
 
-    ctx->dec->output_plane.setStreamStatus(true);
+    tracelogmsg("nvmpi_create_decoder - setting stream status");
+    ret = ctx->dec->output_plane.setStreamStatus(true);
     TEST_ERROR(ret < 0, "Error in output plane stream on", ret);
 
     ctx->out_pixfmt=pixFormat;
@@ -357,8 +399,10 @@ nvmpictx* nvmpi_create_decoder(nvCodingType codingType,nvPixFormat pixFormat)
         ctx->bufptr_2[index] = nullptr;
     }
     ctx->numberCaptureBuffers=0;
+    tracelogmsg("nvmpi_create_decoder - starting the thread");
     ctx->dec_capture_loop=new thread(dec_capture_loop_fcn,ctx);
 
+    tracelogmsg("nvmpi_create_decoder - exit");
     return ctx;
 }
 
@@ -368,9 +412,15 @@ int nvmpi_decoder_put_packet(nvmpictx* ctx,nvPacket* packet)
 {
     int ret;
 
+    std::unique_lock<std::mutex> lock(*ctx->mutex);
+    ctx->packetsSubmitted++;
+    if ( (ctx->packetsSubmitted % 10) == 1 ) {
+        tracelogmsg(STR_FMT("nvmpi_decoder_put_packet - packetsSent=" << ctx->packetsSubmitted << " framesReceived=" << ctx->framesReceived));
+    }
+
     struct v4l2_buffer v4l2_buf;
     struct v4l2_plane planes[MAX_PLANES];
-    NvBuffer *nvBuffer;
+    NvBuffer *nvBuffer = nullptr;
 
     memset(&v4l2_buf, 0, sizeof(v4l2_buf));
     memset(planes, 0, sizeof(planes));
@@ -382,8 +432,8 @@ int nvmpi_decoder_put_packet(nvmpictx* ctx,nvPacket* packet)
     } else {
         ret = ctx->dec->output_plane.dqBuffer(v4l2_buf, &nvBuffer, NULL, -1);
         if (ret < 0) {
-            cout << "Error DQing buffer at output plane" << std::endl;
-            return false;
+            logmsg("NVMPI decoder - failed to to dequeue a buffer");
+            return -1;
         }
     }
 
@@ -404,8 +454,8 @@ int nvmpi_decoder_put_packet(nvmpictx* ctx,nvPacket* packet)
 
     ret = ctx->dec->output_plane.qBuffer(v4l2_buf, NULL);
     if (ret < 0) {
-        std::cout << "Error Qing buffer at output plane" << std::endl;
-        return false;
+        logmsg("NVMPI decoder - failed to to queue a buffer");
+        return -1;
     }
 
     if (ctx->index < ctx->dec->output_plane.getNumBuffers()) {
@@ -414,9 +464,8 @@ int nvmpi_decoder_put_packet(nvmpictx* ctx,nvPacket* packet)
 
     if (v4l2_buf.m.planes[0].bytesused == 0) {
         ctx->eos=true;
-        std::cout << "Input file read complete" << std::endl;
+        logmsg("NVMPI decoder received EOF");
     }
-
 
     return 0;
 }
@@ -457,6 +506,8 @@ int nvmpi_decoder_get_frame(nvmpictx* ctx,nvFrame* frame,bool wait)
     frame->payload_size[2]=ctx->frame_size[2];
     frame->timestamp=ctx->timestamp[picture_index];
 
+    ctx->framesReceived++;
+    tracelogmsg(STR_FMT("nvmpi_decoder_get_frame - got frame: " << ctx->framesReceived));
     return 0;
 }
 
