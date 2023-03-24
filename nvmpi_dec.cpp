@@ -76,7 +76,6 @@ bool NVMPI_framePool::init(const int& imgW, const int& imgH, const NvBufferColor
 	input_params.payloadType = NvBufferPayload_SurfArray;
 	input_params.nvbuf_tag = NvBufferTag_VIDEO_DEC;
 	
-	ret = NvBufferCreateEx (&dst_dma_fd, &input_params);
 	for (int index = 0; index < _bufNumber; index++)
 	{
 		ret = NvBufferCreateEx(&(dst_dma_fd[index]), &input_params);
@@ -115,11 +114,13 @@ void NVMPI_framePool::deinit()
 	}
 	
 	delete[] dst_dma_fd;
+	dst_dma_fd = NULL;
+#ifdef WITH_NVUTILS
 	delete[] dst_dma_surface;
+	dst_dma_surface = NULL;
+#endif
 	
 	_bufNumber = 0;
-	dst_dma_fd = NULL;
-	dst_dma_surface = NULL;
 	
 	m_emptyBuf.unlock();
 	m_filledBuf.unlock();
