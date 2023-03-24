@@ -9,11 +9,6 @@
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
 
-#if LIBAVCODEC_VERSION_MAJOR >= 60
-#include "codec_internal.h"
-#include "encode.h"
-#endif
-
 
 typedef struct {
 	const AVClass *class;
@@ -164,12 +159,8 @@ static int nvmpi_encode_frame(AVCodecContext *avctx, AVPacket *pkt,const AVFrame
 	if(nvmpi_encoder_get_packet(nvmpi_context->ctx,&packet)<0)
 		return 0;
 
-#if LIBAVCODEC_VERSION_MAJOR >= 60
-	if((res = ff_get_encode_buffer(avctx, pkt, packet.payload_size, 0)))
-		return res;
-#else
+
 	ff_alloc_packet2(avctx,pkt,packet.payload_size,packet.payload_size);
-#endif
 
 	memcpy(pkt->data,packet.payload,packet.payload_size);
 	pkt->dts=pkt->pts=packet.pts;
@@ -191,11 +182,7 @@ static av_cold int nvmpi_encode_close(AVCodecContext *avctx){
 	return 0;
 }
 
-#if LIBAVCODEC_VERSION_MAJOR >= 60
-static const FFCodecDefault defaults[] = {
-#else
 static const AVCodecDefault defaults[] = {
-#endif
 	{ "b", "2M" },
 	{ "qmin", "-1" },
 	{ "qmax", "-1" },
@@ -263,43 +250,23 @@ static const AVOption options[] = {
 	};
 
 
-#if LIBAVCODEC_VERSION_MAJOR >= 60
-	#define NVMPI_ENC(NAME, LONGNAME, CODEC) \
-		NVMPI_ENC_CLASS(NAME) \
-		FFCodec ff_ ## NAME ## _nvmpi_encoder = { \
-			.p.name           = #NAME "_nvmpi" , \
-			CODEC_LONG_NAME("nvmpi " LONGNAME " encoder wrapper"), \
-			.p.type           = AVMEDIA_TYPE_VIDEO, \
-			.p.id             = CODEC , \
-			.priv_data_size = sizeof(nvmpiEncodeContext), \
-			.p.priv_class     = &nvmpi_ ## NAME ##_enc_class, \
-			.init           = nvmpi_encode_init, \
-			FF_CODEC_ENCODE_CB(nvmpi_encode_frame), \
-			.close          = nvmpi_encode_close, \
-			.p.pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },\
-			.p.capabilities   = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DELAY, \
-			.defaults       = defaults,\
-			.p.wrapper_name   = "nvmpi", \
-		};
-#else
-	#define NVMPI_ENC(NAME, LONGNAME, CODEC) \
-		NVMPI_ENC_CLASS(NAME) \
-		AVCodec ff_ ## NAME ## _nvmpi_encoder = { \
-			.name           = #NAME "_nvmpi" , \
-			.long_name      = NULL_IF_CONFIG_SMALL("nvmpi " LONGNAME " encoder wrapper"), \
-			.type           = AVMEDIA_TYPE_VIDEO, \
-			.id             = CODEC , \
-			.priv_data_size = sizeof(nvmpiEncodeContext), \
-			.priv_class     = &nvmpi_ ## NAME ##_enc_class, \
-			.init           = nvmpi_encode_init, \
-			.encode2        = nvmpi_encode_frame, \
-			.close          = nvmpi_encode_close, \
-			.pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },\
-			.capabilities   = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DELAY, \
-			.defaults       = defaults,\
-			.wrapper_name   = "nvmpi", \
-		};
-#endif
+#define NVMPI_ENC(NAME, LONGNAME, CODEC) \
+	NVMPI_ENC_CLASS(NAME) \
+	AVCodec ff_ ## NAME ## _nvmpi_encoder = { \
+		.name           = #NAME "_nvmpi" , \
+		.long_name      = NULL_IF_CONFIG_SMALL("nvmpi " LONGNAME " encoder wrapper"), \
+		.type           = AVMEDIA_TYPE_VIDEO, \
+		.id             = CODEC , \
+		.priv_data_size = sizeof(nvmpiEncodeContext), \
+		.priv_class     = &nvmpi_ ## NAME ##_enc_class, \
+		.init           = nvmpi_encode_init, \
+		.encode2        = nvmpi_encode_frame, \
+		.close          = nvmpi_encode_close, \
+		.pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },\
+		.capabilities   = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DELAY, \
+		.defaults       = defaults,\
+		.wrapper_name   = "nvmpi", \
+	};
 
 NVMPI_ENC(h264, "H.264", AV_CODEC_ID_H264);
 NVMPI_ENC(hevc, "HEVC", AV_CODEC_ID_HEVC);

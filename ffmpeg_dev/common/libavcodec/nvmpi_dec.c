@@ -14,16 +14,13 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/log.h"
 
-#if LIBAVCODEC_VERSION_MAJOR >= 60
-#include "codec_internal.h"
-#endif
+
 
 
 typedef struct {
 	char eos_reached;
 	nvmpictx* ctx;
 	AVClass *av_class;
-	AVFrame *bufFrame;
 } nvmpiDecodeContext;
 
 static nvCodingType nvmpi_get_codingtype(AVCodecContext *avctx)
@@ -44,7 +41,7 @@ static int nvmpi_init_decoder(AVCodecContext *avctx){
 
 	nvmpiDecodeContext *nvmpi_context = avctx->priv_data;
 	nvCodingType codectype=NV_VIDEO_CodingUnused;
-	
+
 	codectype =nvmpi_get_codingtype(avctx);
 	if (codectype == NV_VIDEO_CodingUnused) {
 		av_log(avctx, AV_LOG_ERROR, "Unknown codec type (%d).\n", avctx->codec_id);
@@ -52,27 +49,18 @@ static int nvmpi_init_decoder(AVCodecContext *avctx){
 	}
 
 	//Workaround for default pix_fmt not being set, so check if it isnt set and set it,
-	//or if it is set, but isnt set to something we can work with.
+   //or if it is set, but isnt set to something we can work with.
 
 	if(avctx->pix_fmt ==AV_PIX_FMT_NONE){
 		 avctx->pix_fmt=AV_PIX_FMT_YUV420P;
-	}else if((avctx->pix_fmt != AV_PIX_FMT_YUV420P) && (avctx->pix_fmt != AV_PIX_FMT_YUVJ420P)){
-		av_log(avctx, AV_LOG_ERROR, "Invalid Pix_FMT for NVMPI: Only YUV420P and YUVJ420P are supported\n");
+	}else if(avctx-> pix_fmt != AV_PIX_FMT_YUV420P){
+		av_log(avctx, AV_LOG_ERROR, "Invalid Pix_FMT for NVMPI Only yuv420p is supported\n");
 		return AVERROR_INVALIDDATA;
-	}
-	
-	nvmpi_context->bufFrame = av_frame_alloc();
-	if (ff_get_buffer(avctx, nvmpi_context->bufFrame, 0) < 0) {
-		av_frame_free(&(nvmpi_context->bufFrame));
-		nvmpi_context->bufFrame = NULL;
-		return AVERROR(ENOMEM);
 	}
 
 	nvmpi_context->ctx=nvmpi_create_decoder(codectype,NV_PIX_YUV420);
 
 	if(!nvmpi_context->ctx){
-		av_frame_free(&(nvmpi_context->bufFrame));
-		nvmpi_context->bufFrame = NULL;
 		av_log(avctx, AV_LOG_ERROR, "Failed to nvmpi_create_decoder (code = %d).\n", AVERROR_EXTERNAL);
 		return AVERROR_EXTERNAL;
 	}
@@ -85,27 +73,20 @@ static int nvmpi_init_decoder(AVCodecContext *avctx){
 static int nvmpi_close(AVCodecContext *avctx){
 
 	nvmpiDecodeContext *nvmpi_context = avctx->priv_data;
-	if(nvmpi_context->bufFrame)
-	{
-		av_frame_free(&(nvmpi_context->bufFrame));
-		nvmpi_context->bufFrame = NULL;
-	}
 	return nvmpi_decoder_close(nvmpi_context->ctx);
 
 }
 
-#if LIBAVCODEC_VERSION_MAJOR >= 60
-static int nvmpi_decode(AVCodecContext *avctx,AVFrame *data,int *got_frame, AVPacket *avpkt)
-#else
-static int nvmpi_decode(AVCodecContext *avctx,void *data,int *got_frame, AVPacket *avpkt)
-#endif
-{
+
+
+static int nvmpi_decode(AVCodecContext *avctx,void *data,int *got_frame, AVPacket *avpkt){
+
 	nvmpiDecodeContext *nvmpi_context = avctx->priv_data;
 	AVFrame *frame = data;
-	AVFrame *bufFrame = nvmpi_context->bufFrame;
 	nvFrame _nvframe={0};
 	nvPacket packet;
-	int res;
+	uint8_t* ptrs[3];
+	int res,linesize[3];
 
 	if(avpkt->size){
 		packet.payload_size=avpkt->size;
@@ -115,25 +96,39 @@ static int nvmpi_decode(AVCodecContext *avctx,void *data,int *got_frame, AVPacke
 		res=nvmpi_decoder_put_packet(nvmpi_context->ctx,&packet);
 	}
 
-	_nvframe.payload[0] = bufFrame->data[0];
-	_nvframe.payload[1] = bufFrame->data[1];
-	_nvframe.payload[2] = bufFrame->data[2];
-
 	res=nvmpi_decoder_get_frame(nvmpi_context->ctx,&_nvframe,avctx->flags & AV_CODEC_FLAG_LOW_DELAY);
 
 	if(res<0)
 		return avpkt->size;
 
-	bufFrame->format=AV_PIX_FMT_YUV420P;
-	bufFrame->pts=_nvframe.timestamp;
-	bufFrame->pkt_dts = AV_NOPTS_VALUE;
-	av_frame_move_ref(frame, bufFrame);
-	
-	*got_frame = 1;
-	
-	if (ff_get_buffer(avctx, bufFrame, 0) < 0) {
+	if (ff_get_buffer(avctx, frame, 0) < 0) {
 		return AVERROR(ENOMEM);
+
 	}
+
+	linesize[0]=_nvframe.linesize[0];
+	linesize[1]=_nvframe.linesize[1];
+	linesize[2]=_nvframe.linesize[2];
+
+	ptrs[0]=_nvframe.payload[0];
+	ptrs[1]=_nvframe.payload[1];
+	ptrs[2]=_nvframe.payload[2];
+
+	av_image_copy(frame->data, frame->linesize, (const uint8_t **) ptrs, linesize, avctx->pix_fmt, _nvframe.width,_nvframe.height);
+
+	frame->width=_nvframe.width;
+	frame->height=_nvframe.height;
+
+	frame->format=AV_PIX_FMT_YUV420P;
+	frame->pts=_nvframe.timestamp;
+	frame->pkt_dts = AV_NOPTS_VALUE;
+
+	avctx->coded_width=_nvframe.width;
+	avctx->coded_height=_nvframe.height;
+	avctx->width=_nvframe.width;
+	avctx->height=_nvframe.height;
+
+	*got_frame = 1;
 
 	return avpkt->size;
 }
@@ -147,43 +142,24 @@ static int nvmpi_decode(AVCodecContext *avctx,void *data,int *got_frame, AVPacke
 		.version    = LIBAVUTIL_VERSION_INT, \
 	};
 
-#if LIBAVCODEC_VERSION_MAJOR >= 60
-	#define NVMPI_DEC(NAME, ID, BSFS) \
-		NVMPI_DEC_CLASS(NAME) \
-		FFCodec ff_##NAME##_nvmpi_decoder = { \
-			.p.name           = #NAME "_nvmpi", \
-			CODEC_LONG_NAME(#NAME " (nvmpi)"), \
-			.p.type           = AVMEDIA_TYPE_VIDEO, \
-			.p.id             = ID, \
-			.priv_data_size = sizeof(nvmpiDecodeContext), \
-			.init           = nvmpi_init_decoder, \
-			.close          = nvmpi_close, \
-			FF_CODEC_DECODE_CB(nvmpi_decode), \
-			.p.priv_class     = &nvmpi_##NAME##_dec_class, \
-			.p.capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
-			.p.pix_fmts	=(const enum AVPixelFormat[]){AV_PIX_FMT_YUV420P,AV_PIX_FMT_NV12,AV_PIX_FMT_NONE},\
-			.bsfs           = BSFS, \
-			.p.wrapper_name   = "nvmpi", \
-		};
-#else
-	#define NVMPI_DEC(NAME, ID, BSFS) \
-		NVMPI_DEC_CLASS(NAME) \
-		AVCodec ff_##NAME##_nvmpi_decoder = { \
-			.name           = #NAME "_nvmpi", \
-			.long_name      = NULL_IF_CONFIG_SMALL(#NAME " (nvmpi)"), \
-			.type           = AVMEDIA_TYPE_VIDEO, \
-			.id             = ID, \
-			.priv_data_size = sizeof(nvmpiDecodeContext), \
-			.init           = nvmpi_init_decoder, \
-			.close          = nvmpi_close, \
-			.decode         = nvmpi_decode, \
-			.priv_class     = &nvmpi_##NAME##_dec_class, \
-			.capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
-			.pix_fmts	=(const enum AVPixelFormat[]){AV_PIX_FMT_YUV420P,AV_PIX_FMT_NV12,AV_PIX_FMT_NONE},\
-			.bsfs           = BSFS, \
-			.wrapper_name   = "nvmpi", \
-		};
-#endif
+#define NVMPI_DEC(NAME, ID, BSFS) \
+	NVMPI_DEC_CLASS(NAME) \
+	AVCodec ff_##NAME##_nvmpi_decoder = { \
+		.name           = #NAME "_nvmpi", \
+		.long_name      = NULL_IF_CONFIG_SMALL(#NAME " (nvmpi)"), \
+		.type           = AVMEDIA_TYPE_VIDEO, \
+		.id             = ID, \
+		.priv_data_size = sizeof(nvmpiDecodeContext), \
+		.init           = nvmpi_init_decoder, \
+		.close          = nvmpi_close, \
+		.decode         = nvmpi_decode, \
+		.priv_class     = &nvmpi_##NAME##_dec_class, \
+		.capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
+		.pix_fmts	=(const enum AVPixelFormat[]){AV_PIX_FMT_YUV420P,AV_PIX_FMT_NV12,AV_PIX_FMT_NONE},\
+		.bsfs           = BSFS, \
+		.wrapper_name   = "nvmpi", \
+	};
+
 
 
 NVMPI_DEC(h264,  AV_CODEC_ID_H264,"h264_mp4toannexb");
