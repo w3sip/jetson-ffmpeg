@@ -55,8 +55,8 @@ static int nvmpi_init_decoder(AVCodecContext *avctx)
 
     if(avctx->pix_fmt ==AV_PIX_FMT_NONE){
          avctx->pix_fmt=AV_PIX_FMT_YUV420P;
-    }else if(avctx-> pix_fmt != AV_PIX_FMT_YUV420P){
-        av_log(avctx, AV_LOG_ERROR, "Invalid Pix_FMT for NVMPI Only yuv420p is supported\n");
+    } else if((avctx->pix_fmt != AV_PIX_FMT_YUV420P) && (avctx->pix_fmt != AV_PIX_FMT_YUVJ420P)){
+        av_log(avctx, AV_LOG_ERROR, "Invalid Pix_FMT for NVMPI: Only YUV420P and YUVJ420P are supported\n");
         return AVERROR_INVALIDDATA;
     }
 
