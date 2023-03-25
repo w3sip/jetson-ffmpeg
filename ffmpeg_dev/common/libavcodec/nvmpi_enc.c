@@ -175,7 +175,7 @@ static int ff_nvmpi_receive_packet(AVCodecContext *avctx, AVPacket *pkt)
 	nvmpiEncodeContext * nvmpi_context = avctx->priv_data;
 	nvPacket packet={0};
 	int res;
-	
+
 	res = nvmpi_encoder_get_packet(nvmpi_context->ctx,&packet);
 	if(res<0)
 	{
@@ -334,7 +334,6 @@ static const AVOption options[] = {
 			.priv_data_size = sizeof(nvmpiEncodeContext), \
 			.priv_class     = &nvmpi_ ## NAME ##_enc_class, \
 			.init           = nvmpi_encode_init, \
-			.send_frame     = ff_nvmpi_send_frame, \
 			.receive_packet = ff_nvmpi_receive_packet, \
 			.encode2        = ff_nvmpi_encode_frame, \
 			.close          = nvmpi_encode_close, \
