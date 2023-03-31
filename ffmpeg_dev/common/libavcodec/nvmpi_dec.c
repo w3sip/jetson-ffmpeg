@@ -44,7 +44,7 @@ static int nvmpi_init_decoder(AVCodecContext *avctx){
 
 	nvmpiDecodeContext *nvmpi_context = avctx->priv_data;
 	nvCodingType codectype=NV_VIDEO_CodingUnused;
-	
+
 	codectype =nvmpi_get_codingtype(avctx);
 	if (codectype == NV_VIDEO_CodingUnused) {
 		av_log(avctx, AV_LOG_ERROR, "Unknown codec type (%d).\n", avctx->codec_id);
@@ -60,7 +60,7 @@ static int nvmpi_init_decoder(AVCodecContext *avctx){
 		av_log(avctx, AV_LOG_ERROR, "Invalid Pix_FMT for NVMPI: Only YUV420P and YUVJ420P are supported\n");
 		return AVERROR_INVALIDDATA;
 	}
-	
+
 	nvmpi_context->bufFrame = av_frame_alloc();
 	if (ff_get_buffer(avctx, nvmpi_context->bufFrame, 0) < 0) {
 		av_frame_free(&(nvmpi_context->bufFrame));
@@ -76,6 +76,22 @@ static int nvmpi_init_decoder(AVCodecContext *avctx){
 		av_log(avctx, AV_LOG_ERROR, "Failed to nvmpi_create_decoder (code = %d).\n", AVERROR_EXTERNAL);
 		return AVERROR_EXTERNAL;
 	}
+
+	// AVCodecContext extradata contains complete NALU with pps, just have to feed it to the decoder
+	if(avctx->extradata_size){
+		nvPacket packet;
+		int r;
+
+		packet.payload_size=avctx->extradata_size;
+		packet.payload=avctx->extradata;
+		packet.pts=0;
+
+		r = nvmpi_decoder_put_packet(nvmpi_context->ctx,&packet);
+		if (r < 0) {
+			av_log(avctx, AV_LOG_ERROR, "Failed to put pps packet (code = %d).\n", r);
+		}
+	}
+
    return 0;
 
 }
@@ -128,9 +144,9 @@ static int nvmpi_decode(AVCodecContext *avctx,void *data,int *got_frame, AVPacke
 	bufFrame->pts=_nvframe.timestamp;
 	bufFrame->pkt_dts = AV_NOPTS_VALUE;
 	av_frame_move_ref(frame, bufFrame);
-	
+
 	*got_frame = 1;
-	
+
 	if (ff_get_buffer(avctx, bufFrame, 0) < 0) {
 		return AVERROR(ENOMEM);
 	}
