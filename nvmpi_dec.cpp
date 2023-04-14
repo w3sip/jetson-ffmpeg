@@ -38,7 +38,7 @@
 using namespace std;
 
 //---------------------------------------------------------------------------------------------------------------------
-struct NVMPI_framePool
+class NVMPI_framePool
 {
     int                         m_bufCount = 0; //total number of allocated buffers
     int*                        m_dstDmaFd = NULL;
@@ -52,6 +52,7 @@ struct NVMPI_framePool
     std::queue<int>             m_filledBuf;    //filled buffers to consume
     unsigned long long          m_timestamp[MAX_BUFFERS];
 
+public:
     int init(const int& imgW, const int& imgH, const NvBufferColorFormat& cFmt, const int& bufNumber);
     void deinit();
 
@@ -60,6 +61,13 @@ struct NVMPI_framePool
 
     int dqFilledBuf();
     void qFilledBuf(int bIndex);
+
+    long long getTimestamp(int bIndex) const { return m_timestamp[bIndex]; }
+    void setTimestamp(int bIndex, long long t) { m_timestamp[bIndex] = t; }
+    int getDmaFd(int bIndex) { return m_dstDmaFd[bIndex]; }
+#ifdef WITH_NVUTILS
+    int getDmaSurface(int bIndex) { return m_dstDmaSurface[bIndex]; }
+#endif
 };
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -189,7 +197,7 @@ int NVMPI_framePool::dqEmptyBuf()
 }
 
 //---------------------------------------------------------------------------------------------------------------------
-struct nvmpictx
+class nvmpictx
 {
     NvVideoDecoder*                 m_decoder{nullptr};
     bool                            m_terminated{false};
@@ -242,6 +250,7 @@ private:
 
 public:
     int         init(nvCodingType codingType, nvPixFormat pixFormat);
+    int         putPacket(nvPacket* packet);
     int         getFrame(nvFrame* frame, bool wait);
     void        close();
 };
@@ -374,11 +383,11 @@ int nvmpictx::updateFrameSizeParams()
 #ifdef WITH_NVUTILS
     NvBufSurfacePlaneParams parm;
     NvBufSurfaceParams dst_dma_surface_params;
-    dst_dma_surface_params = m_framePool.m_dstDmaSurface[0]->surfaceList[0];
+    dst_dma_surface_params = m_framePool.getDmaSurface(0)->surfaceList[0];
     parm = dst_dma_surface_params.planeParams;
 #else
     NvBufferParams parm;
-    int ret = NvBufferGetParams(m_framePool.m_dstDmaFd[0], &parm);
+    int ret = NvBufferGetParams(m_framePool.getDmaFd(0), &parm);
     TEST_ERROR(ret < 0, "Failed to get dst dma buf params", ret);
 #endif
 
@@ -564,16 +573,16 @@ void nvmpictx::captureLoop()
 
             if(bIndex != -1) {
 #ifdef WITH_NVUTILS
-                ret = NvBufSurfTransform(m_dmaBufferSurface[v4l2_buf.index], m_framePool.m_dstDmaSurface[bIndex], &m_transformParams);
+                ret = NvBufSurfTransform(m_dmaBufferSurface[v4l2_buf.index], m_framePool.getDmaSurface(bIndex), &m_transformParams);
 #else
-                ret = NvBufferTransform(dec_buffer->planes[0].fd, m_framePool.m_dstDmaFd[bIndex], &m_transformParams);
+                ret = NvBufferTransform(dec_buffer->planes[0].fd, m_framePool.getDmaFd(bIndex), &m_transformParams);
 #endif
                 if (ret < 0 ) {
                     LOG_ERR( "Transform failed, err=" << ret );
                     m_terminated = true;
                     break;
                 }
-                m_framePool.m_timestamp[bIndex] = (v4l2_buf.timestamp.tv_usec % 1000000) + (v4l2_buf.timestamp.tv_sec * 1000000UL);
+                m_framePool.setTimestamp(bIndex, (v4l2_buf.timestamp.tv_usec % 1000000) + (v4l2_buf.timestamp.tv_sec * 1000000UL));
                 m_framePool.qFilledBuf(bIndex);
             } else {
                 LOG_ERR( "No empty buffers available to transform, Frame skipped!" );
@@ -664,25 +673,33 @@ int nvmpictx::init(nvCodingType codingType, nvPixFormat pixFormat)
     return 0;
 }
 
+
 //---------------------------------------------------------------------------------------------------------------------
 int nvmpi_decoder_put_packet(nvmpictx* ctx,nvPacket* packet)
+{
+    return ctx->putPacket(packet);
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+int nvmpictx::putPacket(nvPacket* packet)
 {
     int ret;
     struct v4l2_buffer v4l2_buf;
     struct v4l2_plane planes[MAX_PLANES];
-    NvBuffer *nvBuffer;
+    NvBuffer *nvBuffer = nullptr;
 
     memset(&v4l2_buf, 0, sizeof(v4l2_buf));
     memset(planes, 0, sizeof(planes));
 
     v4l2_buf.m.planes = planes;
 
-    if (ctx->m_index < (int)ctx->m_decoder->output_plane.getNumBuffers()) {
-        nvBuffer = ctx->m_decoder->output_plane.getNthBuffer(ctx->m_index);
-        v4l2_buf.index = ctx->m_index;
-        ctx->m_index++;
+    if (m_index < (int)m_decoder->output_plane.getNumBuffers()) {
+        nvBuffer = m_decoder->output_plane.getNthBuffer(m_index);
+        TEST_ERROR( nvBuffer != nullptr, "Failed to get Nth buffer", -1);
+        v4l2_buf.index = m_index;
+        m_index++;
     } else {
-        ret = ctx->m_decoder->output_plane.dqBuffer(v4l2_buf, &nvBuffer, NULL, -1);
+        ret = m_decoder->output_plane.dqBuffer(v4l2_buf, &nvBuffer, NULL, -1);
         TEST_ERROR (ret < 0, "Error DQing buffer at output plane", -1 );
     }
 
@@ -694,12 +711,12 @@ int nvmpi_decoder_put_packet(nvmpictx* ctx,nvPacket* packet)
     v4l2_buf.timestamp.tv_sec = packet->pts / 1000000;
     v4l2_buf.timestamp.tv_usec = packet->pts % 1000000;
 
-    ret = ctx->m_decoder->output_plane.qBuffer(v4l2_buf, NULL);
+    ret = m_decoder->output_plane.qBuffer(v4l2_buf, NULL);
     TEST_ERROR (ret < 0, "Error Qing buffer at output plane", -1 );
 
     if (v4l2_buf.m.planes[0].bytesused == 0) {
         LOG_DBG("EOF in decoder!");
-        ctx->m_terminated=true;
+        m_terminated=true;
     }
 
     return 0;
@@ -720,14 +737,14 @@ int nvmpictx::getFrame(nvFrame* frame,bool wait)
         return -1;
     }
 #ifdef WITH_NVUTILS
-    NvBufSurface *dSurf = m_framePool.m_dstDmaSurface[bIndex];
+    NvBufSurface *dSurf = m_framePool.getDmaSurface(bIndex);
     ret=NvBufSurface2Raw(dSurf,0,0,m_frameLinesize[0],m_frameHeight[0],frame->payload[0]);
     ret=NvBufSurface2Raw(dSurf,0,1,m_frameLinesize[1],m_frameHeight[1],frame->payload[1]);
     if (m_outputPixfmt==NV_PIX_YUV420) {
         ret=NvBufSurface2Raw(dSurf,0,2,m_frameLinesize[2],m_frameHeight[2],frame->payload[2]);
     }
 #else
-    int dFd = m_framePool.m_dstDmaFd[bIndex];
+    int dFd = m_framePool.getDmaFd(bIndex);
     ret=NvBuffer2Raw(dFd,0,m_frameLinesize[0],m_frameHeight[0],frame->payload[0]);
     ret=NvBuffer2Raw(dFd,1,m_frameLinesize[1],m_frameHeight[1],frame->payload[1]);
     if (m_outputPixfmt==NV_PIX_YUV420) {
@@ -735,7 +752,7 @@ int nvmpictx::getFrame(nvFrame* frame,bool wait)
     }
 #endif
 
-    frame->timestamp = m_framePool.m_timestamp[bIndex];
+    frame->timestamp = m_framePool.getTimestamp(bIndex);
     //return buffer to pool
     m_framePool.qEmptyBuf(bIndex);
     return ret;
