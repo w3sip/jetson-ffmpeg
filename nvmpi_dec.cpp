@@ -254,6 +254,7 @@ private:
     int         initDecoderCapturePlane(v4l2_format &format);
     /* deinitPlane unmaps the buffers and calls REQBUFS with count 0 */
     void        deinitDecoderCapturePlane();
+    void        deinitDecoderOutputPlane();
     void        captureLoop();
     int         respondToResolutionEvent(v4l2_format &format, v4l2_crop &crop);
 
@@ -372,6 +373,23 @@ int nvmpictx::initDecoderCapturePlane(v4l2_format &format)
     }
     return 0;
 }
+
+//---------------------------------------------------------------------------------------------------------------------
+void nvmpictx::deinitDecoderOutputPlane()
+{
+    while (m_decoder->output_plane.getNumQueuedBuffers() > 0 && !m_decoder->isInError()) {
+        struct v4l2_buffer v4l2_buf;
+        struct v4l2_plane planes[MAX_PLANES];
+
+        memset(&v4l2_buf, 0, sizeof(v4l2_buf));
+        memset(planes, 0, sizeof(planes));
+
+        v4l2_buf.m.planes = planes;
+        int ret = m_decoder->output_plane.dqBuffer(v4l2_buf, NULL, NULL, -1);
+        WARN_ERROR(ret < 0, "Failed to dequeue buffer" );
+    }
+}
+
 
 //---------------------------------------------------------------------------------------------------------------------
 void nvmpictx::deinitDecoderCapturePlane()
@@ -622,7 +640,11 @@ nvmpictx* nvmpi_create_decoder(nvCodingType codingType, nvPixFormat pixFormat)
         delete ctx;
         ctx = nullptr;
     }
+#ifdef WITH_NVUTILS
+    LOG_DBG("Initialized NVMPI decoder, ver." << VER << "(nvutils)");
+#else
     LOG_DBG("Initialized NVMPI decoder, ver." << VER );
+#endif
     return ctx;
 }
 
@@ -773,15 +795,20 @@ int nvmpictx::getFrame(nvFrame* frame,bool wait)
 //---------------------------------------------------------------------------------------------------------------------
 void nvmpictx::close()
 {
+    LOG_DBG("Terminating the decoder");
     m_terminated=true;
+    m_decoder->output_plane.setStreamStatus(false);
     m_decoder->capture_plane.setStreamStatus(false);
     if (m_thread.joinable()) {
         m_thread.join();
+    } else {
+        LOG_ERR("Thread is not joinable");
     }
 
     LOG_DBG("Closing decoder, packets=" << m_packetsSubmitted << " frames=" << m_framesRead);
     //deinit DstDmaBuffer and DecoderCapturePlane
     deinitDecoderCapturePlane();
+    deinitDecoderOutputPlane();
     //empty frame queue and free buffers
     deinitFramePool();
 
