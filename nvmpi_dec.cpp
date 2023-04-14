@@ -29,11 +29,11 @@ struct NVMPI_framePool
     NvBufSurface **dst_dma_surface = NULL;
 #endif
 
-    std::mutex m_emptyBuf;
-    std::mutex m_filledBuf;
-    std::queue<int> emptyBuf; //list of buffers available to fill
-    std::queue<int> filledBuf; //filled buffers to consume
-    unsigned long long timestamp[MAX_BUFFERS];
+    std::mutex                  m_emptyBufMtx;
+    std::mutex                  m_filledBufMtx;
+    std::queue<int>             m_emptyBuf;     //list of buffers available to fill
+    std::queue<int>             m_filledBuf;    //filled buffers to consume
+    unsigned long long          m_timestamp[MAX_BUFFERS];
 
     bool init(const int& imgW, const int& imgH, const NvBufferColorFormat& cFmt, const int& bufNumber);
     void deinit();
@@ -85,11 +85,10 @@ bool NVMPI_framePool::init(const int& imgW, const int& imgH, const NvBufferColor
 #endif
     TEST_ERROR(ret == -1, "create dst_dmabuf failed", error);
 
-    m_emptyBuf.lock();
+    std::unique_lock<std::mutex> lk(m_emptyBufMtx);
     for (int index = 0; index < _bufNumber; index++) {
-        emptyBuf.push(index);
+        m_emptyBuf.push(index);
     }
-    m_emptyBuf.unlock();
 
     return true;
 }
@@ -97,17 +96,17 @@ bool NVMPI_framePool::init(const int& imgW, const int& imgH, const NvBufferColor
 //---------------------------------------------------------------------------------------------------------------------
 void NVMPI_framePool::deinit()
 {
-    m_emptyBuf.lock();
-    m_filledBuf.lock();
+    std::unique_lock<std::mutex> lkEmpty(m_emptyBufMtx);
+    std::unique_lock<std::mutex> lkFilled(m_filledBufMtx);
 
     int ret = 0;
     int numBufPopped = 0;
-    while(!emptyBuf.empty()) {
-        emptyBuf.pop();
+    while(!m_emptyBuf.empty()) {
+        m_emptyBuf.pop();
         numBufPopped++;
     }
-    while(!filledBuf.empty()) {
-        filledBuf.pop();
+    while(!m_filledBuf.empty()) {
+        m_filledBuf.pop();
         numBufPopped++;
     }
 
@@ -131,17 +130,13 @@ void NVMPI_framePool::deinit()
 #endif
 
     _bufNumber = 0;
-
-    m_emptyBuf.unlock();
-    m_filledBuf.unlock();
 }
 
 //---------------------------------------------------------------------------------------------------------------------
 void NVMPI_framePool::qFilledBuf(int bIndex)
 {
-    m_filledBuf.lock();
-    filledBuf.push(bIndex);
-    m_filledBuf.unlock();
+    std::unique_lock<std::mutex> lk(m_filledBufMtx);
+    m_filledBuf.push(bIndex);
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -149,21 +144,19 @@ void NVMPI_framePool::qFilledBuf(int bIndex)
 int NVMPI_framePool::dqFilledBuf()
 {
     int ret = -1;
-    m_filledBuf.lock();
-    if(!filledBuf.empty()) {
-        ret = filledBuf.front();
-        filledBuf.pop();
+    std::unique_lock<std::mutex> lk(m_filledBufMtx);
+    if(!m_filledBuf.empty()) {
+        ret = m_filledBuf.front();
+        m_filledBuf.pop();
     }
-    m_filledBuf.unlock();
     return ret;
 }
 
 //---------------------------------------------------------------------------------------------------------------------
 void NVMPI_framePool::qEmptyBuf(int bIndex)
 {
-    m_emptyBuf.lock();
-    emptyBuf.push(bIndex);
-    m_emptyBuf.unlock();
+    std::unique_lock<std::mutex> lk(m_emptyBufMtx);
+    m_emptyBuf.push(bIndex);
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -171,12 +164,11 @@ void NVMPI_framePool::qEmptyBuf(int bIndex)
 int NVMPI_framePool::dqEmptyBuf()
 {
     int ret = -1;
-    m_emptyBuf.lock();
-    if(!emptyBuf.empty()) {
-        ret = emptyBuf.front();
-        emptyBuf.pop();
+    std::unique_lock<std::mutex> lk(m_emptyBufMtx);
+    if(!m_emptyBuf.empty()) {
+        ret = m_emptyBuf.front();
+        m_emptyBuf.pop();
     }
-    m_emptyBuf.unlock();
     return ret;
 }
 
@@ -535,7 +527,7 @@ void dec_capture_loop_fcn(void *arg)
                 ret = NvBufferTransform(dec_buffer->planes[0].fd, ctx->fPool.dst_dma_fd[bIndex], &(ctx->transform_params));
 #endif
                 TEST_ERROR(ret==-1, "Transform failed",ret);
-                ctx->fPool.timestamp[bIndex] = (v4l2_buf.timestamp.tv_usec % 1000000) + (v4l2_buf.timestamp.tv_sec * 1000000UL);
+                ctx->fPool.m_timestamp[bIndex] = (v4l2_buf.timestamp.tv_usec % 1000000) + (v4l2_buf.timestamp.tv_sec * 1000000UL);
 
                 ctx->fPool.qFilledBuf(bIndex);
             } else {
@@ -695,7 +687,7 @@ int nvmpi_decoder_get_frame(nvmpictx* ctx,nvFrame* frame,bool wait)
     }
 #endif
 
-    frame->timestamp=ctx->fPool.timestamp[bIndex];
+    frame->timestamp=ctx->fPool.m_timestamp[bIndex];
     //return buffer to pool
     ctx->fPool.qEmptyBuf(bIndex);
 
@@ -716,9 +708,9 @@ int nvmpi_decoder_close(nvmpictx* ctx)
     //empty frame queue and free buffers
     ctx->deinitFramePool();
 
-    delete ctx->dec; ctx->dec = nullptr;
+    delete ctx->dec;
+    ctx->dec = nullptr;
     delete ctx;
-
     return 0;
 }
 
