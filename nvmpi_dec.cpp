@@ -13,9 +13,16 @@
 #define CHUNK_SIZE 4000000
 #define MAX_BUFFERS 32
 
+//---------------------------------------------------------------------------------------------------------------------
+static int loggingEnabled()
+{
+    const char* var = getenv("NVMPI_DEBUG");
+    return var ? 1 : 0;
+}
+static const int gNVMPIDebug = loggingEnabled();
 
 #define LOG_ERR(msg)        cout << msg << endl;
-#define LOG_DBG(msg)        cout << msg << endl;
+#define LOG_DBG(msg)        if ( gNVMPIDebug ) { cout << msg << endl; }
 #define VER "0.01"
 
 #define TEST_ERROR(condition, message, errorCode)    \
@@ -208,6 +215,8 @@ class nvmpictx
     int                             m_numberCaptureBuffers{0};
 
     int                             m_dmaBufferFd[MAX_BUFFERS];
+    int                             m_packetsSubmitted{0};
+    int                             m_framesRead{0};
 
 #ifdef WITH_NVUTILS
     NvBufSurface*                   m_dmaBufferSurface[MAX_BUFFERS];
@@ -695,7 +704,7 @@ int nvmpictx::putPacket(nvPacket* packet)
 
     if (m_index < (int)m_decoder->output_plane.getNumBuffers()) {
         nvBuffer = m_decoder->output_plane.getNthBuffer(m_index);
-        TEST_ERROR( nvBuffer != nullptr, "Failed to get Nth buffer", -1);
+        TEST_ERROR( nvBuffer == nullptr, "Failed to get Nth buffer", -1);
         v4l2_buf.index = m_index;
         m_index++;
     } else {
@@ -713,6 +722,7 @@ int nvmpictx::putPacket(nvPacket* packet)
 
     ret = m_decoder->output_plane.qBuffer(v4l2_buf, NULL);
     TEST_ERROR (ret < 0, "Error Qing buffer at output plane", -1 );
+    m_packetsSubmitted++;
 
     if (v4l2_buf.m.planes[0].bytesused == 0) {
         LOG_DBG("EOF in decoder!");
@@ -755,6 +765,7 @@ int nvmpictx::getFrame(nvFrame* frame,bool wait)
     frame->timestamp = m_framePool.getTimestamp(bIndex);
     //return buffer to pool
     m_framePool.qEmptyBuf(bIndex);
+    m_framesRead++;
     return ret;
 }
 
@@ -768,6 +779,7 @@ void nvmpictx::close()
         m_thread.join();
     }
 
+    LOG_DBG("Closing decoder, packets=" << m_packetsSubmitted << " frames=" << m_framesRead);
     //deinit DstDmaBuffer and DecoderCapturePlane
     deinitDecoderCapturePlane();
     //empty frame queue and free buffers
