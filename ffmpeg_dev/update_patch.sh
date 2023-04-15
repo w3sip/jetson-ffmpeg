@@ -5,9 +5,9 @@ SCRIPT_PATH="`dirname \"$0\"`"
 #clone
 rm -rf $SCRIPT_PATH/ffmpeg?.?
 if [ -z $DEV_FFMPEG_SRC ]; then
-    git clone git://source.ffmpeg.org/ffmpeg.git -b release/4.2 --depth=1 $SCRIPT_PATH/ffmpeg4.2
-    git clone git://source.ffmpeg.org/ffmpeg.git -b release/4.4 --depth=1 $SCRIPT_PATH/ffmpeg4.4
-    git clone git://source.ffmpeg.org/ffmpeg.git -b release/6.0 --depth=1 $SCRIPT_PATH/ffmpeg6.0
+    git clone git://source.ffmpeg.org/ffmpeg.git -b n4.2.4 --depth=1 $SCRIPT_PATH/ffmpeg4.2
+    git clone git://source.ffmpeg.org/ffmpeg.git -b n4.4.2 --depth=1 $SCRIPT_PATH/ffmpeg4.4
+    git clone git://source.ffmpeg.org/ffmpeg.git -b n6.0   --depth=1 $SCRIPT_PATH/ffmpeg6.0
 else
     cp -r $DEV_FFMPEG_SRC/ffmpeg4.2 $SCRIPT_PATH/ffmpeg4.2
     cp -r $DEV_FFMPEG_SRC/ffmpeg4.4 $SCRIPT_PATH/ffmpeg4.4
