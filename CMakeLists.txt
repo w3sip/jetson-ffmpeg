@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.9)
 project(nvmpi VERSION 1.0.0 DESCRIPTION "nvidia multimedia api")
 
+option(WithNVUTILS "Use more modern NVUTIL API" OFF)
+
 set(CMAKE_C_FLAGS“$ {CMAKE_C_FLAGS} -fPIC”)
 set(CMAKE_CXX_FLAGS“$ {CMAKE_CXX_FLAGS} -fPIC”)
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath-link=/usr/lib/aarch64-linux-gnu/tegra")
@@ -22,11 +24,14 @@ set(NVMPI_SRC
     /usr/src/jetson_multimedia_api/samples/common/classes/NvV4l2ElementPlane.cpp
     /usr/src/jetson_multimedia_api/samples/common/classes/NvVideoDecoder.cpp
     /usr/src/jetson_multimedia_api/samples/common/classes/NvVideoEncoder.cpp)
-    
+
 set(NVMPI_DEP_LIBS ${CMAKE_THREAD_LIBS_INIT} ${LIB_NVBUF} ${LIB_V4L2} ${LIB_NVJPEG})
 
-#if NvUtils API is present prefer it to nvbuf_utils 
-if(EXISTS "/usr/src/jetson_multimedia_api/include/nvbufsurface.h")
+#if NvUtils API is present prefer it to nvbuf_utils
+if (WithNVUTILS)
+	if( NOT EXISTS "/usr/src/jetson_multimedia_api/include/nvbufsurface.h")
+		message( FATAL_ERROR "/usr/src/jetson_multimedia_api/include/nvbufsurface.h does not exist - NVUTILS must be turned off" )
+	endif()
 	add_definitions(-DWITH_NVUTILS)
 	find_library(LIB_NVBUFSURFACE nvbufsurface PATHS /usr/lib/aarch64-linux-gnu/tegra)
 	find_library(LIB_NVBUFSURFTRANSFORM nvbufsurftransform PATHS /usr/lib/aarch64-linux-gnu/tegra)
