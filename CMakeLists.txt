@@ -38,6 +38,8 @@ if (WithNVUTILS)
 	set(NVMPI_SRC ${NVMPI_SRC}
 		/usr/src/jetson_multimedia_api/samples/common/classes/NvBufSurface.cpp)
 	set(NVMPI_DEP_LIBS ${NVMPI_DEP_LIBS} ${LIB_NVBUFSURFACE} ${LIB_NVBUFSURFTRANSFORM})
+else()
+        add_definitions(-DEGL_NO_X11)
 endif()
 
 add_library(nvmpi SHARED ${NVMPI_SRC})
