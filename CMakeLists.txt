@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.9)
 project(nvmpi VERSION 1.0.0 DESCRIPTION "nvidia multimedia api")
 
-option(WithStatic "Build static library" ON)
-option(WithShared "Build shared library" OFF)
+option(WithStatic "Build static library" OFF)
+option(WithShared "Build shared library" ON)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
