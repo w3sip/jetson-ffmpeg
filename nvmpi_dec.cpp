@@ -73,7 +73,7 @@ public:
     void setTimestamp(int bIndex, long long t) { m_timestamp[bIndex] = t; }
     int getDmaFd(int bIndex) { return m_dstDmaFd[bIndex]; }
 #ifdef WITH_NVUTILS
-    int getDmaSurface(int bIndex) { return m_dstDmaSurface[bIndex]; }
+    NvBufSurface* getDmaSurface(int bIndex) { return m_dstDmaSurface[bIndex]; }
 #endif
 };
 
