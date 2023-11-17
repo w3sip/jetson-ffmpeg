@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.9)
 project(nvmpi VERSION 1.0.0 DESCRIPTION "nvidia multimedia api")
 
 option(WithNVUTILS "Use more modern NVUTIL API" OFF)
-option(WithStatic "Build static library" ON)
-option(WithShared "Build shared library" OFF)
+option(WithStatic "Build static library" OFF)
+option(WithShared "Build shared library" ON)
 
 set(CMAKE_C_FLAGS“$ {CMAKE_C_FLAGS} -fPIC”)
 set(CMAKE_CXX_FLAGS“$ {CMAKE_CXX_FLAGS} -fPIC”)
