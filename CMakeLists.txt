@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.9)
 project(nvmpi VERSION 1.0.0 DESCRIPTION "nvidia multimedia api")
 
+option(WithStatic "Build static library" OFF)
+option(WithShared "Build shared library" ON)
+
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -46,10 +49,10 @@ set(NVMPI_SRC
     ${JETSON_MULTIMEDIA_API_SRC_DIR}/NvV4l2ElementPlane.cpp
     ${JETSON_MULTIMEDIA_API_SRC_DIR}/NvVideoDecoder.cpp
     ${JETSON_MULTIMEDIA_API_SRC_DIR}/NvVideoEncoder.cpp)
-    
+
 set(NVMPI_DEP_LIBS ${CMAKE_THREAD_LIBS_INIT} ${LIB_NVBUF} ${LIB_V4L2} ${LIB_NVJPEG})
 
-#if NvUtils API is present prefer it to nvbuf_utils 
+#if NvUtils API is present prefer it to nvbuf_utils
 if(EXISTS "/usr/src/jetson_multimedia_api/include/nvbufsurface.h")
 	add_definitions(-DWITH_NVUTILS)
 	find_library(LIB_NVBUFSURFACE nvbufsurface PATHS /usr/lib/aarch64-linux-gnu/tegra)
@@ -59,23 +62,33 @@ if(EXISTS "/usr/src/jetson_multimedia_api/include/nvbufsurface.h")
 	set(NVMPI_DEP_LIBS ${NVMPI_DEP_LIBS} ${LIB_NVBUFSURFACE} ${LIB_NVBUFSURFTRANSFORM})
 endif()
 
-add_library(nvmpi SHARED ${NVMPI_SRC})
-add_library(nvmpi_static STATIC ${NVMPI_SRC})
+if (WithShared)
+	add_library(nvmpi SHARED ${NVMPI_SRC})
+	set_target_properties(nvmpi PROPERTIES VERSION ${PROJECT_VERSION})
+	set_target_properties(nvmpi PROPERTIES SOVERSION 1)
+	set_target_properties(nvmpi PROPERTIES LINK_FLAGS "-Wl,--no-as-needed")
+	target_link_libraries(nvmpi PRIVATE ${NVMPI_DEP_LIBS})
+	set_target_properties(nvmpi PROPERTIES PUBLIC_HEADER ${NVMPI_PUBLIC_HEADER})
+	target_include_directories(nvmpi PRIVATE ${NVMPI_INCLUDE_DIRS})
+	install(TARGETS nvmpi
+				LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+				ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+				PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
 
-set_target_properties(nvmpi_static PROPERTIES OUTPUT_NAME nvmpi)
-set_target_properties(nvmpi PROPERTIES VERSION ${PROJECT_VERSION})
-set_target_properties(nvmpi PROPERTIES SOVERSION 1)
-set_target_properties(nvmpi nvmpi_static PROPERTIES PUBLIC_HEADER ${NVMPI_PUBLIC_HEADER})
-set_target_properties(nvmpi PROPERTIES LINK_FLAGS "-Wl,--no-as-needed")
-target_link_libraries(nvmpi PRIVATE ${NVMPI_DEP_LIBS})
-target_include_directories(nvmpi PRIVATE ${NVMPI_INCLUDE_DIRS})
-target_include_directories(nvmpi_static PRIVATE ${NVMPI_INCLUDE_DIRS})
+if (WithStatic)
+	add_library(nvmpi_static STATIC ${NVMPI_SRC})
+	set_target_properties(nvmpi_static PROPERTIES OUTPUT_NAME nvmpi)
+	set_target_properties(nvmpi_static PROPERTIES PUBLIC_HEADER ${NVMPI_PUBLIC_HEADER})
+	target_include_directories(nvmpi_static PRIVATE ${NVMPI_INCLUDE_DIRS})
+	install(TARGETS nvmpi_static
+				LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+				ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+				PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
+
 configure_file(nvmpi.pc.in nvmpi.pc @ONLY)
 include(GNUInstallDirs)
-install(TARGETS nvmpi nvmpi_static
-	    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${CMAKE_BINARY_DIR}/nvmpi.pc
 	    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)
 install(FILES ${CMAKE_BINARY_DIR}/nvmpi.pc
