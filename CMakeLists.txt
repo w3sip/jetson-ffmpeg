@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.9)
 project(nvmpi VERSION 1.0.0 DESCRIPTION "nvidia multimedia api")
 
 option(WithNVUTILS "Use more modern NVUTIL API" OFF)
+option(WithStatic "Build static library" OFF)
+option(WithShared "Build shared library" ON)
 
 set(CMAKE_C_FLAGS“$ {CMAKE_C_FLAGS} -fPIC”)
 set(CMAKE_CXX_FLAGS“$ {CMAKE_CXX_FLAGS} -fPIC”)
@@ -42,25 +44,35 @@ else()
         add_definitions(-DEGL_NO_X11)
 endif()
 
-add_library(nvmpi SHARED ${NVMPI_SRC})
-add_library(nvmpi_static STATIC ${NVMPI_SRC})
+if (WithShared)
+	add_library(nvmpi SHARED ${NVMPI_SRC})
+	set_target_properties(nvmpi PROPERTIES VERSION ${PROJECT_VERSION})
+	set_target_properties(nvmpi PROPERTIES SOVERSION 1)
+	set_target_properties(nvmpi PROPERTIES LINK_FLAGS "-Wl,--no-as-needed")
+	target_link_libraries(nvmpi PRIVATE ${NVMPI_DEP_LIBS})
+	set_target_properties(nvmpi PROPERTIES PUBLIC_HEADER nvmpi.h)
+	target_include_directories(nvmpi PRIVATE /usr/src/jetson_multimedia_api/include)
+	target_include_directories(nvmpi PRIVATE /usr/local/cuda/include)
+	install(TARGETS nvmpi
+				LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+				ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+				PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
 
-set_target_properties(nvmpi_static PROPERTIES OUTPUT_NAME nvmpi)
-set_target_properties(nvmpi PROPERTIES VERSION ${PROJECT_VERSION})
-set_target_properties(nvmpi PROPERTIES SOVERSION 1)
-set_target_properties(nvmpi nvmpi_static PROPERTIES PUBLIC_HEADER nvmpi.h)
-set_target_properties(nvmpi PROPERTIES LINK_FLAGS "-Wl,--no-as-needed")
-target_link_libraries(nvmpi PRIVATE ${NVMPI_DEP_LIBS})
-target_include_directories(nvmpi PRIVATE /usr/src/jetson_multimedia_api/include)
-target_include_directories(nvmpi PRIVATE /usr/local/cuda/include)
-target_include_directories(nvmpi_static PRIVATE /usr/src/jetson_multimedia_api/include)
-target_include_directories(nvmpi_static PRIVATE /usr/local/cuda/include)
+if (WithStatic)
+	add_library(nvmpi_static STATIC ${NVMPI_SRC})
+	set_target_properties(nvmpi_static PROPERTIES OUTPUT_NAME nvmpi)
+	set_target_properties(nvmpi_static PROPERTIES PUBLIC_HEADER nvmpi.h)
+	target_include_directories(nvmpi_static PRIVATE /usr/src/jetson_multimedia_api/include)
+	target_include_directories(nvmpi_static PRIVATE /usr/local/cuda/include)
+	install(TARGETS nvmpi_static
+				LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+				ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+				PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
+
 configure_file(nvmpi.pc.in nvmpi.pc @ONLY)
 include(GNUInstallDirs)
-install(TARGETS nvmpi nvmpi_static
-	    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${CMAKE_BINARY_DIR}/nvmpi.pc
 	    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)
 install(FILES ${CMAKE_BINARY_DIR}/nvmpi.pc
