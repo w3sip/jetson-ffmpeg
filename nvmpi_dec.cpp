@@ -1,6 +1,7 @@
 
 #include "nvmpi.h"
 #include "NvVideoDecoder.h"
+#include "NvLogging.h"
 #include "nvUtils2NvBuf.h"
 #include <vector>
 #include <iostream>
@@ -17,6 +18,9 @@
 static int loggingEnabled()
 {
     const char* var = getenv("NVMPI_DEBUG");
+    if (var) {
+        log_level = LOG_LEVEL_DEBUG;
+    }
     return var ? 1 : 0;
 }
 static const int gNVMPIDebug = loggingEnabled();
@@ -71,9 +75,10 @@ public:
 
     long long getTimestamp(int bIndex) const { return m_timestamp[bIndex]; }
     void setTimestamp(int bIndex, long long t) { m_timestamp[bIndex] = t; }
-    int getDmaFd(int bIndex) { return m_dstDmaFd[bIndex]; }
 #ifdef WITH_NVUTILS
     NvBufSurface* getDmaSurface(int bIndex) { return m_dstDmaSurface[bIndex]; }
+#else
+    int getDmaFd(int bIndex) { return m_dstDmaFd[bIndex]; }
 #endif
 };
 
@@ -217,6 +222,7 @@ class nvmpictx
     int                             m_dmaBufferFd[MAX_BUFFERS];
     int                             m_packetsSubmitted{0};
     int                             m_framesRead{0};
+    int64_t                         m_prevFrameTs{0};
 
 #ifdef WITH_NVUTILS
     NvBufSurface*                   m_dmaBufferSurface[MAX_BUFFERS];
@@ -577,6 +583,9 @@ void nvmpictx::captureLoop()
         while(!m_terminated) {
             struct v4l2_buffer v4l2_buf;
             struct v4l2_plane planes[MAX_PLANES];
+
+            memset(&v4l2_buf, 0, sizeof(v4l2_buf));
+            memset(planes, 0, sizeof(planes));
             v4l2_buf.m.planes = planes;
 
             /* Dequeue a filled buffer. */
@@ -586,7 +595,11 @@ void nvmpictx::captureLoop()
                         LOG_ERR("Got EoS at capture plane");
                         m_terminated=true;
                     }
-                    usleep(1000);
+
+                    // This buffer didn't result in a frame - re-queue it and continue the loop
+                    LOG_DBG("No frame at capture plane: buffer=" << (void*)dec_buffer << " bufferIndex=" << v4l2_buf.index);
+
+                    usleep(100);
                 } else {
                     LOG_ERR("Error " << errno << " while calling dequeue at capture plane");
                     m_terminated=true;
@@ -594,9 +607,13 @@ void nvmpictx::captureLoop()
                 break;
             }
 
+            int64_t pts = (v4l2_buf.timestamp.tv_usec % 1000000) + (v4l2_buf.timestamp.tv_sec * 1000000UL);
+
             dec_buffer->planes[0].fd = m_dmaBufferFd[v4l2_buf.index];
 
             bIndex = m_framePool.dqEmptyBuf();
+
+            LOG_DBG("Received decoded frame at capture plane: buffer=" << (void*)dec_buffer << " bufferIndex=" << v4l2_buf.index << " pts=" << pts << " ts=" << v4l2_buf.timestamp.tv_sec << "." << v4l2_buf.timestamp.tv_usec << " index=" << bIndex );
 
             if(bIndex != -1) {
 #ifdef WITH_NVUTILS
@@ -609,7 +626,7 @@ void nvmpictx::captureLoop()
                     m_terminated = true;
                     break;
                 }
-                m_framePool.setTimestamp(bIndex, (v4l2_buf.timestamp.tv_usec % 1000000) + (v4l2_buf.timestamp.tv_sec * 1000000UL));
+                m_framePool.setTimestamp(bIndex, pts);
                 m_framePool.qFilledBuf(bIndex);
             } else {
                 LOG_ERR( "No empty buffers available to transform, Frame skipped!" );
@@ -742,9 +759,12 @@ int nvmpictx::putPacket(nvPacket* packet)
     v4l2_buf.timestamp.tv_sec = packet->pts / 1000000;
     v4l2_buf.timestamp.tv_usec = packet->pts % 1000000;
 
+    LOG_DBG("Submitting packet=" << m_packetsSubmitted << " timestamp=" << packet->pts << " buffer=" << (void*)nvBuffer << " bufferIndex=" << v4l2_buf.index << " ts=" << v4l2_buf.timestamp.tv_sec << "." << v4l2_buf.timestamp.tv_usec );
+
     ret = m_decoder->output_plane.qBuffer(v4l2_buf, NULL);
     TEST_ERROR (ret < 0, "Error Qing buffer at output plane", -1 );
     m_packetsSubmitted++;
+
 
     if (v4l2_buf.m.planes[0].bytesused == 0) {
         LOG_DBG("EOF in decoder!");
@@ -785,6 +805,10 @@ int nvmpictx::getFrame(nvFrame* frame,bool wait)
 #endif
 
     frame->timestamp = m_framePool.getTimestamp(bIndex);
+    int64_t diff = frame->timestamp - m_prevFrameTs;
+
+    LOG_DBG("Received frame=" << m_framesRead << " index=" << bIndex << " pts=" << frame->timestamp << " diff=" << diff << " flag=" << (diff>=0?"0":"1"));
+
     //return buffer to pool
     m_framePool.qEmptyBuf(bIndex);
     m_framesRead++;
