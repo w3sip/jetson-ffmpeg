@@ -129,6 +129,10 @@ static int nvmpi_decode(AVCodecContext *avctx,void *data,int *got_frame, AVPacke
 		packet.pts=avpkt->pts;
 
 		res=nvmpi_decoder_put_packet(nvmpi_context->ctx,&packet);
+		if ( res < 0 ) {
+			av_log(avctx, AV_LOG_ERROR, "Failed to put packet (code = %d).\n", res);
+			return -1;
+		}
 	}
 
 	_nvframe.payload[0] = bufFrame->data[0];

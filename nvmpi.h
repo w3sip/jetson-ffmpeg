@@ -3,6 +3,11 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#define SAVE_BITSTREAM 1
+#if SAVE_BITSTREAM
+    static constexpr long nvmpimagic = 0x00000000DEADBEEF;
+#endif
+
 typedef struct nvmpictx nvmpictx;
 
 typedef enum {
@@ -30,7 +35,7 @@ typedef struct _NVENCPARAM{
 	unsigned int qmax;
 	unsigned int qmin;
 	unsigned int hw_preset_type;
-	
+
 } nvEncParam;
 
 typedef struct _NVPACKET{
@@ -76,7 +81,7 @@ extern "C" {
 	int nvmpi_decoder_close(nvmpictx* ctx);
 
 	nvmpictx* nvmpi_create_encoder(nvCodingType codingType,nvEncParam * param);
-		
+
 	int nvmpi_encoder_put_frame(nvmpictx* ctx,nvFrame* frame);
 
 	int nvmpi_encoder_get_packet(nvmpictx* ctx,nvPacket* packet);

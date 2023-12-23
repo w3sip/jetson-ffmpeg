@@ -31,6 +31,7 @@ set(NVMPI_DEP_LIBS ${CMAKE_THREAD_LIBS_INIT} ${LIB_NVBUF} ${LIB_V4L2} ${LIB_NVJP
 
 #if NvUtils API is present prefer it to nvbuf_utils
 if (WithNVUTILS)
+	message("NVUTILS ON")
 	if( NOT EXISTS "/usr/src/jetson_multimedia_api/include/nvbufsurface.h")
 		message( FATAL_ERROR "/usr/src/jetson_multimedia_api/include/nvbufsurface.h does not exist - NVUTILS must be turned off" )
 	endif()
@@ -41,7 +42,8 @@ if (WithNVUTILS)
 		/usr/src/jetson_multimedia_api/samples/common/classes/NvBufSurface.cpp)
 	set(NVMPI_DEP_LIBS ${NVMPI_DEP_LIBS} ${LIB_NVBUFSURFACE} ${LIB_NVBUFSURFTRANSFORM})
 else()
-        add_definitions(-DEGL_NO_X11)
+	message("NVUTILS OFF")
+	add_definitions(-DEGL_NO_X11)
 endif()
 
 if (WithShared)
@@ -70,6 +72,16 @@ if (WithStatic)
 				ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 				PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif()
+
+add_executable(nvmpitest test.cpp)
+set_target_properties(nvmpitest PROPERTIES LINK_FLAGS "-Wl,--no-as-needed -Wl,--unresolved-symbols=ignore-in-shared-libs")
+set_target_properties(nvmpitest PROPERTIES DEFINITIONS -DEGL_NO_X11)
+target_include_directories(nvmpitest PRIVATE /usr/src/jetson_multimedia_api/include)
+target_include_directories(nvmpitest PRIVATE /usr/local/cuda/include)
+target_link_libraries(nvmpitest PRIVATE nvmpi ${NVMPI_DEP_LIBS})
+install(TARGETS nvmpitest
+			RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 
 configure_file(nvmpi.pc.in nvmpi.pc @ONLY)
 include(GNUInstallDirs)
