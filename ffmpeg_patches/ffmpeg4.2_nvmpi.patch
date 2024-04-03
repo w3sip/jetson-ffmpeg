@@ -1,5 +1,5 @@
 diff --git a/configure b/configure
-index 16d9c78..3d0835c 100755
+index 6a7a85c..23b19f8 100755
 --- a/configure
 +++ b/configure
 @@ -340,6 +340,7 @@ External library support:
@@ -10,6 +10,15 @@ index 16d9c78..3d0835c 100755
  
  Toolchain options:
    --arch=ARCH              select architecture [$arch]
+@@ -526,7 +527,7 @@ die(){
+ 
+ If you think configure made a mistake, make sure you are using the latest
+ version from Git.  If the latest version fails, report the problem to the
+-ffmpeg-user@ffmpeg.org mailing list or IRC #ffmpeg on irc.freenode.net.
++ffmpeg-user@ffmpeg.org mailing list or IRC #ffmpeg on irc.libera.chat.
+ EOF
+     if disabled logging; then
+         cat <<EOF
 @@ -1851,6 +1852,7 @@ HWACCEL_LIBRARY_LIST="
      mmal
      omx
@@ -79,14 +88,52 @@ index 16d9c78..3d0835c 100755
  vp9_mediacodec_decoder_deps="mediacodec"
  vp9_rkmpp_decoder_deps="rkmpp"
  vp9_vaapi_encoder_deps="VAEncPictureParameterBufferVP9"
-@@ -6366,6 +6378,7 @@ enabled rkmpp             && { require_pkg_config rkmpp rockchip_mpp  rockchip/r
+@@ -3187,7 +3199,7 @@ libopus_encoder_deps="libopus"
+ libopus_encoder_select="audio_frame_queue"
+ librsvg_decoder_deps="librsvg"
+ libshine_encoder_deps="libshine"
+-libshine_encoder_select="audio_frame_queue"
++libshine_encoder_select="audio_frame_queue mpegaudioheader"
+ libspeex_decoder_deps="libspeex"
+ libspeex_encoder_deps="libspeex"
+ libspeex_encoder_select="audio_frame_queue"
+@@ -6305,9 +6317,7 @@ enabled libwebp           && {
+     enabled libwebp_anim_encoder && check_pkg_config libwebp_anim_encoder "libwebpmux >= 0.4.0" webp/mux.h WebPAnimEncoderOptionsInit; }
+ enabled libx264           && { check_pkg_config libx264 x264 "stdint.h x264.h" x264_encoder_encode ||
+                                { require libx264 "stdint.h x264.h" x264_encoder_encode "-lx264 $pthreads_extralibs $libm_extralibs" &&
+-                                 warn "using libx264 without pkg-config"; } } &&
+-                             require_cpp_condition libx264 x264.h "X264_BUILD >= 118" &&
+-                             check_cpp_condition libx262 x264.h "X264_MPEG2"
++                                 warn "using libx264 without pkg-config"; } }
+ enabled libx265           && require_pkg_config libx265 x265 x265.h x265_api_get &&
+                              require_cpp_condition libx265 x265.h "X265_BUILD >= 68"
+ enabled libxavs           && require libxavs "stdint.h xavs.h" xavs_encoder_encode "-lxavs $pthreads_extralibs $libm_extralibs"
+@@ -6366,6 +6376,7 @@ enabled rkmpp             && { require_pkg_config rkmpp rockchip_mpp  rockchip/r
                                   die "ERROR: rkmpp requires --enable-libdrm"; }
                               }
  enabled vapoursynth       && require_pkg_config vapoursynth "vapoursynth-script >= 42" VSScript.h vsscript_init
-+enabled nvmpi		  && require_pkg_config nvmpi nvmpi nvmpi.h nvmpi_create_decoder
++enabled nvmpi
  
  
  if enabled gcrypt; then
+@@ -6383,7 +6394,7 @@ fi
+ 
+ if enabled sdl2; then
+     SDL2_CONFIG="${cross_prefix}sdl2-config"
+-    test_pkg_config sdl2 "sdl2 >= 2.0.1 sdl2 < 2.1.0" SDL_events.h SDL_PollEvent
++    test_pkg_config sdl2 "sdl2 >= 2.0.1 sdl2 < 3.0.0" SDL_events.h SDL_PollEvent
+     if disabled sdl2 && "${SDL2_CONFIG}" --version > /dev/null 2>&1; then
+         sdl2_cflags=$("${SDL2_CONFIG}" --cflags)
+         sdl2_extralibs=$("${SDL2_CONFIG}" --libs)
+@@ -7397,7 +7408,7 @@ cat > $TMPH <<EOF
+ #define FFMPEG_CONFIG_H
+ #define FFMPEG_CONFIGURATION "$(c_escape $FFMPEG_CONFIGURATION)"
+ #define FFMPEG_LICENSE "$(c_escape $license)"
+-#define CONFIG_THIS_YEAR 2020
++#define CONFIG_THIS_YEAR 2022
+ #define FFMPEG_DATADIR "$(eval c_escape $datadir)"
+ #define AVCONV_DATADIR "$(eval c_escape $datadir)"
+ #define CC_IDENT "$(c_escape ${cc_ident:-Unknown compiler})"
 diff --git a/libavcodec/Makefile b/libavcodec/Makefile
 index 3cd73fb..c3ed5cc 100644
 --- a/libavcodec/Makefile
@@ -184,10 +231,10 @@ index d2f9a39..04dc62b 100644
  
 diff --git a/libavcodec/nvmpi_dec.c b/libavcodec/nvmpi_dec.c
 new file mode 100644
-index 0000000..9cfd876
+index 0000000..add9942
 --- /dev/null
 +++ b/libavcodec/nvmpi_dec.c
-@@ -0,0 +1,195 @@
+@@ -0,0 +1,211 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <sys/time.h>
@@ -234,7 +281,7 @@ index 0000000..9cfd876
 +
 +	nvmpiDecodeContext *nvmpi_context = avctx->priv_data;
 +	nvCodingType codectype=NV_VIDEO_CodingUnused;
-+	
++
 +	codectype =nvmpi_get_codingtype(avctx);
 +	if (codectype == NV_VIDEO_CodingUnused) {
 +		av_log(avctx, AV_LOG_ERROR, "Unknown codec type (%d).\n", avctx->codec_id);
@@ -250,7 +297,7 @@ index 0000000..9cfd876
 +		av_log(avctx, AV_LOG_ERROR, "Invalid Pix_FMT for NVMPI: Only YUV420P and YUVJ420P are supported\n");
 +		return AVERROR_INVALIDDATA;
 +	}
-+	
++
 +	nvmpi_context->bufFrame = av_frame_alloc();
 +	if (ff_get_buffer(avctx, nvmpi_context->bufFrame, 0) < 0) {
 +		av_frame_free(&(nvmpi_context->bufFrame));
@@ -266,6 +313,22 @@ index 0000000..9cfd876
 +		av_log(avctx, AV_LOG_ERROR, "Failed to nvmpi_create_decoder (code = %d).\n", AVERROR_EXTERNAL);
 +		return AVERROR_EXTERNAL;
 +	}
++
++	// AVCodecContext extradata contains complete NALU with pps, just have to feed it to the decoder
++	if(avctx->extradata_size){
++		nvPacket packet;
++		int r;
++
++		packet.payload_size=avctx->extradata_size;
++		packet.payload=avctx->extradata;
++		packet.pts=0;
++
++		r = nvmpi_decoder_put_packet(nvmpi_context->ctx,&packet);
++		if (r < 0) {
++			av_log(avctx, AV_LOG_ERROR, "Failed to put pps packet (code = %d).\n", r);
++		}
++	}
++
 +   return 0;
 +
 +}
@@ -318,9 +381,9 @@ index 0000000..9cfd876
 +	bufFrame->pts=_nvframe.timestamp;
 +	bufFrame->pkt_dts = AV_NOPTS_VALUE;
 +	av_frame_move_ref(frame, bufFrame);
-+	
++
 +	*got_frame = 1;
-+	
++
 +	if (ff_get_buffer(avctx, bufFrame, 0) < 0) {
 +		return AVERROR(ENOMEM);
 +	}
@@ -385,10 +448,10 @@ index 0000000..9cfd876
 +
 diff --git a/libavcodec/nvmpi_enc.c b/libavcodec/nvmpi_enc.c
 new file mode 100644
-index 0000000..b445f86
+index 0000000..69fd197
 --- /dev/null
 +++ b/libavcodec/nvmpi_enc.c
-@@ -0,0 +1,349 @@
+@@ -0,0 +1,348 @@
 +#include <nvmpi.h>
 +#include "avcodec.h"
 +#include "internal.h"
@@ -566,7 +629,7 @@ index 0000000..b445f86
 +	nvmpiEncodeContext * nvmpi_context = avctx->priv_data;
 +	nvPacket packet={0};
 +	int res;
-+	
++
 +	res = nvmpi_encoder_get_packet(nvmpi_context->ctx,&packet);
 +	if(res<0)
 +	{
@@ -725,7 +788,6 @@ index 0000000..b445f86
 +			.priv_data_size = sizeof(nvmpiEncodeContext), \
 +			.priv_class     = &nvmpi_ ## NAME ##_enc_class, \
 +			.init           = nvmpi_encode_init, \
-+			.send_frame     = ff_nvmpi_send_frame, \
 +			.receive_packet = ff_nvmpi_receive_packet, \
 +			.encode2        = ff_nvmpi_encode_frame, \
 +			.close          = nvmpi_encode_close, \
