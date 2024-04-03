@@ -16,7 +16,7 @@ function checkRet() {
     fi
 }
 
-for longVer in "4.2.4" "4.4.2" "6.0"
+for longVer in  "4.2.4" "4.4.2" "6.0" "6.1.1"
 do
     ver=`echo ${longVer} | head -c 3`
     git clone git://source.ffmpeg.org/ffmpeg.git -b n${longVer} --depth=1 ${SCRIPT_PATH}/ffmpeg${ver}

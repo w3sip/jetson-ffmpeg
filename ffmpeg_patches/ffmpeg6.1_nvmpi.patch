@@ -1,24 +1,24 @@
 diff --git a/configure b/configure
-index 6409b94..f87db4c 100755
+index a89cfa6..706abb7 100755
 --- a/configure
 +++ b/configure
-@@ -349,6 +349,7 @@ External library support:
-   --disable-vaapi          disable Video Acceleration API (mainly Unix/Intel) code [autodetect]
+@@ -351,6 +351,7 @@ External library support:
    --disable-vdpau          disable Nvidia Video Decode and Presentation API for Unix code [autodetect]
    --disable-videotoolbox   disable VideoToolbox code [autodetect]
+   --disable-vulkan         disable Vulkan code [autodetect]
 +  --enable-nvmpi           enable nvmpi code
  
  Toolchain options:
    --arch=ARCH              select architecture [$arch]
-@@ -1869,6 +1870,7 @@ HWACCEL_LIBRARY_LIST="
+@@ -1952,6 +1953,7 @@ HWACCEL_LIBRARY_LIST="
+     mmal
      omx
      opencl
-     vulkan
 +    nvmpi
  "
  
  DOCUMENT_LIST="
-@@ -3081,12 +3083,15 @@ h264_mediacodec_decoder_select="h264_mp4toannexb_bsf h264_parser"
+@@ -3226,12 +3228,15 @@ h264_mediacodec_encoder_select="h264_metadata"
  h264_mf_encoder_deps="mediafoundation"
  h264_mmal_decoder_deps="mmal"
  h264_nvenc_encoder_deps="nvenc"
@@ -31,10 +31,10 @@ index 6409b94..f87db4c 100755
  h264_rkmpp_decoder_select="h264_mp4toannexb_bsf"
 +h264_nvmpi_decoder_deps="nvmpi"
 +h264_nvmpi_decoder_select="h264_mp4toannexb_bsf"
- h264_vaapi_encoder_select="cbs_h264 vaapi_encode"
+ h264_vaapi_encoder_select="atsc_a53 cbs_h264 vaapi_encode"
  h264_v4l2m2m_decoder_deps="v4l2_m2m h264_v4l2_m2m"
  h264_v4l2m2m_decoder_select="h264_mp4toannexb_bsf"
-@@ -3099,10 +3104,13 @@ hevc_mediacodec_decoder_select="hevc_mp4toannexb_bsf hevc_parser"
+@@ -3246,10 +3251,13 @@ hevc_mediacodec_encoder_select="hevc_metadata"
  hevc_mf_encoder_deps="mediafoundation"
  hevc_nvenc_encoder_deps="nvenc"
  hevc_nvenc_encoder_select="atsc_a53"
@@ -46,9 +46,9 @@ index 6409b94..f87db4c 100755
 +hevc_nvmpi_decoder_deps="nvmpi"
 +hevc_nvmpi_decoder_select="hevc_mp4toannexb_bsf"
  hevc_vaapi_encoder_deps="VAEncPictureParameterBufferHEVC"
- hevc_vaapi_encoder_select="cbs_h265 vaapi_encode"
+ hevc_vaapi_encoder_select="atsc_a53 cbs_h265 vaapi_encode"
  hevc_v4l2m2m_decoder_deps="v4l2_m2m hevc_v4l2_m2m"
-@@ -3119,6 +3127,7 @@ mpeg1_cuvid_decoder_deps="cuvid"
+@@ -3266,6 +3274,7 @@ mpeg1_cuvid_decoder_deps="cuvid"
  mpeg1_v4l2m2m_decoder_deps="v4l2_m2m mpeg1_v4l2_m2m"
  mpeg2_crystalhd_decoder_select="crystalhd"
  mpeg2_cuvid_decoder_deps="cuvid"
@@ -56,138 +56,61 @@ index 6409b94..f87db4c 100755
  mpeg2_mmal_decoder_deps="mmal"
  mpeg2_mediacodec_decoder_deps="mediacodec"
  mpeg2_qsv_decoder_select="qsvdec"
-@@ -3127,6 +3136,7 @@ mpeg2_vaapi_encoder_select="cbs_mpeg2 vaapi_encode"
+@@ -3274,6 +3283,7 @@ mpeg2_vaapi_encoder_select="cbs_mpeg2 vaapi_encode"
  mpeg2_v4l2m2m_decoder_deps="v4l2_m2m mpeg2_v4l2_m2m"
  mpeg4_crystalhd_decoder_select="crystalhd"
  mpeg4_cuvid_decoder_deps="cuvid"
 +mpeg4_nvmpi_decoder_deps="nvmpi"
  mpeg4_mediacodec_decoder_deps="mediacodec"
+ mpeg4_mediacodec_encoder_deps="mediacodec"
  mpeg4_mmal_decoder_deps="mmal"
- mpeg4_omx_encoder_deps="omx"
-@@ -3141,6 +3151,7 @@ vc1_mmal_decoder_deps="mmal"
+@@ -3287,6 +3297,7 @@ vc1_mmal_decoder_deps="mmal"
  vc1_qsv_decoder_select="qsvdec"
  vc1_v4l2m2m_decoder_deps="v4l2_m2m vc1_v4l2_m2m"
  vp8_cuvid_decoder_deps="cuvid"
 +vp8_nvmpi_decoder_deps="nvmpi"
  vp8_mediacodec_decoder_deps="mediacodec"
+ vp8_mediacodec_encoder_deps="mediacodec"
  vp8_qsv_decoder_select="qsvdec"
- vp8_rkmpp_decoder_deps="rkmpp"
-@@ -3149,6 +3160,7 @@ vp8_vaapi_encoder_select="vaapi_encode"
+@@ -3296,6 +3307,7 @@ vp8_vaapi_encoder_select="vaapi_encode"
  vp8_v4l2m2m_decoder_deps="v4l2_m2m vp8_v4l2_m2m"
  vp8_v4l2m2m_encoder_deps="v4l2_m2m vp8_v4l2_m2m"
  vp9_cuvid_decoder_deps="cuvid"
 +vp9_nvmpi_decoder_deps="nvmpi"
  vp9_mediacodec_decoder_deps="mediacodec"
+ vp9_mediacodec_encoder_deps="mediacodec"
  vp9_qsv_decoder_select="qsvdec"
- vp9_rkmpp_decoder_deps="rkmpp"
-@@ -3706,23 +3718,23 @@ cws2fws_extralibs="zlib_extralibs"
- 
- # libraries, in any order
- avcodec_deps="avutil"
--avcodec_suggest="libm"
-+avcodec_suggest="libm stdatomic"
- avcodec_select="null_bsf"
- avdevice_deps="avformat avcodec avutil"
--avdevice_suggest="libm"
-+avdevice_suggest="libm stdatomic"
- avfilter_deps="avutil"
--avfilter_suggest="libm"
-+avfilter_suggest="libm stdatomic"
- avformat_deps="avcodec avutil"
--avformat_suggest="libm network zlib"
-+avformat_suggest="libm network zlib stdatomic"
- avresample_deps="avutil"
- avresample_suggest="libm"
--avutil_suggest="clock_gettime ffnvcodec libm libdrm libmfx opencl user32 vaapi vulkan videotoolbox corefoundation corevideo coremedia bcrypt"
-+avutil_suggest="clock_gettime ffnvcodec libm libdrm libmfx opencl user32 vaapi vulkan videotoolbox corefoundation corevideo coremedia bcrypt stdatomic"
- postproc_deps="avutil gpl"
--postproc_suggest="libm"
-+postproc_suggest="libm stdatomic"
- swresample_deps="avutil"
--swresample_suggest="libm libsoxr"
-+swresample_suggest="libm libsoxr stdatomic"
- swscale_deps="avutil"
--swscale_suggest="libm"
-+swscale_suggest="libm stdatomic"
- 
- avcodec_extralibs="pthreads_extralibs iconv_extralibs dxva2_extralibs"
- avfilter_extralibs="pthreads_extralibs"
-@@ -6186,7 +6198,14 @@ check_headers asm/types.h
- # it seems there are versions of clang in some distros that try to use the
- # gcc headers, which explodes for stdatomic
- # so we also check that atomics actually work here
--check_builtin stdatomic stdatomic.h "atomic_int foo, bar = ATOMIC_VAR_INIT(-1); atomic_store(&foo, 0); foo += bar"
-+#
-+# some configurations also require linking to libatomic, so try
-+# both with -latomic and without
-+for LATOMIC in "-latomic" ""; do
-+    check_builtin stdatomic stdatomic.h                                                 \
-+        "atomic_int foo, bar = ATOMIC_VAR_INIT(-1); atomic_store(&foo, 0); foo += bar"  \
-+        $LATOMIC && eval stdatomic_extralibs="\$LATOMIC" && break
-+done
- 
- check_lib advapi32 "windows.h"            RegCloseKey          -ladvapi32
- check_lib bcrypt   "windows.h bcrypt.h"   BCryptGenRandom      -lbcrypt &&
-@@ -6473,9 +6492,7 @@ enabled libwebp           && {
-     enabled libwebp_anim_encoder && check_pkg_config libwebp_anim_encoder "libwebpmux >= 0.4.0" webp/mux.h WebPAnimEncoderOptionsInit; }
- enabled libx264           && { check_pkg_config libx264 x264 "stdint.h x264.h" x264_encoder_encode ||
-                                { require libx264 "stdint.h x264.h" x264_encoder_encode "-lx264 $pthreads_extralibs $libm_extralibs" &&
--                                 warn "using libx264 without pkg-config"; } } &&
--                             require_cpp_condition libx264 x264.h "X264_BUILD >= 118" &&
--                             check_cpp_condition libx262 x264.h "X264_MPEG2"
-+                                 warn "using libx264 without pkg-config"; } }
- enabled libx265           && require_pkg_config libx265 x265 x265.h x265_api_get &&
-                              require_cpp_condition libx265 x265.h "X265_BUILD >= 70"
- enabled libxavs           && require libxavs "stdint.h xavs.h" xavs_encoder_encode "-lxavs $pthreads_extralibs $libm_extralibs"
-@@ -6538,6 +6555,7 @@ enabled rkmpp             && { require_pkg_config rkmpp rockchip_mpp  rockchip/r
+@@ -6911,6 +6923,7 @@ enabled rkmpp             && { require_pkg_config rkmpp rockchip_mpp  rockchip/r
                                   die "ERROR: rkmpp requires --enable-libdrm"; }
                               }
  enabled vapoursynth       && require_pkg_config vapoursynth "vapoursynth-script >= 42" VSScript.h vsscript_init
-+enabled nvmpi
++enabled nvmpi		  && require_pkg_config nvmpi nvmpi nvmpi.h nvmpi_create_decoder
  
  
  if enabled gcrypt; then
-@@ -6555,7 +6573,7 @@ fi
- 
- if enabled sdl2; then
-     SDL2_CONFIG="${cross_prefix}sdl2-config"
--    test_pkg_config sdl2 "sdl2 >= 2.0.1 sdl2 < 2.1.0" SDL_events.h SDL_PollEvent
-+    test_pkg_config sdl2 "sdl2 >= 2.0.1 sdl2 < 3.0.0" SDL_events.h SDL_PollEvent
-     if disabled sdl2 && "${SDL2_CONFIG}" --version > /dev/null 2>&1; then
-         sdl2_cflags=$("${SDL2_CONFIG}" --cflags)
-         sdl2_extralibs=$("${SDL2_CONFIG}" --libs)
-@@ -7584,7 +7602,7 @@ cat > $TMPH <<EOF
- #define FFMPEG_CONFIG_H
- #define FFMPEG_CONFIGURATION "$(c_escape $FFMPEG_CONFIGURATION)"
- #define FFMPEG_LICENSE "$(c_escape $license)"
--#define CONFIG_THIS_YEAR 2021
-+#define CONFIG_THIS_YEAR 2022
- #define FFMPEG_DATADIR "$(eval c_escape $datadir)"
- #define AVCONV_DATADIR "$(eval c_escape $datadir)"
- #define CC_IDENT "$(c_escape ${cc_ident:-Unknown compiler})"
 diff --git a/libavcodec/Makefile b/libavcodec/Makefile
-index b3d284d..50ab6cd 100644
+index ec57e53..4bb7a6d 100644
 --- a/libavcodec/Makefile
 +++ b/libavcodec/Makefile
-@@ -377,6 +377,8 @@ OBJS-$(CONFIG_H264_MMAL_DECODER)       += mmaldec.o
- OBJS-$(CONFIG_H264_NVENC_ENCODER)      += nvenc.o nvenc_h264.o
- OBJS-$(CONFIG_NVENC_ENCODER)           += nvenc.o nvenc_h264.o
- OBJS-$(CONFIG_NVENC_H264_ENCODER)      += nvenc.o nvenc_h264.o
+@@ -410,6 +410,8 @@ OBJS-$(CONFIG_H264_MEDIACODEC_ENCODER) += mediacodecenc.o
+ OBJS-$(CONFIG_H264_MF_ENCODER)         += mfenc.o mf_utils.o
+ OBJS-$(CONFIG_H264_MMAL_DECODER)       += mmaldec.o
+ OBJS-$(CONFIG_H264_NVENC_ENCODER)      += nvenc_h264.o nvenc.o
 +OBJS-$(CONFIG_H264_NVMPI_DECODER)      += nvmpi_dec.o
 +OBJS-$(CONFIG_H264_NVMPI_ENCODER)      += nvmpi_enc.o
  OBJS-$(CONFIG_H264_OMX_ENCODER)        += omx.o
  OBJS-$(CONFIG_H264_QSV_DECODER)        += qsvdec.o
  OBJS-$(CONFIG_H264_QSV_ENCODER)        += qsvenc_h264.o
-@@ -405,6 +407,8 @@ OBJS-$(CONFIG_HEVC_RKMPP_DECODER)      += rkmppdec.o
- OBJS-$(CONFIG_HEVC_VAAPI_ENCODER)      += vaapi_encode_h265.o h265_profile_level.o
+@@ -443,6 +445,8 @@ OBJS-$(CONFIG_HEVC_VAAPI_ENCODER)      += vaapi_encode_h265.o h265_profile_level
+                                           h2645data.o
  OBJS-$(CONFIG_HEVC_V4L2M2M_DECODER)    += v4l2_m2m_dec.o
  OBJS-$(CONFIG_HEVC_V4L2M2M_ENCODER)    += v4l2_m2m_enc.o
 +OBJS-$(CONFIG_HEVC_NVMPI_DECODER)      += nvmpi_dec.o
 +OBJS-$(CONFIG_HEVC_NVMPI_ENCODER)      += nvmpi_enc.o
+ OBJS-$(CONFIG_HEVC_VIDEOTOOLBOX_ENCODER) += videotoolboxenc.o
  OBJS-$(CONFIG_HNM4_VIDEO_DECODER)      += hnm4video.o
  OBJS-$(CONFIG_HQ_HQA_DECODER)          += hq_hqa.o hq_hqadata.o hq_hqadsp.o \
-                                           canopus.o
-@@ -494,12 +498,14 @@ OBJS-$(CONFIG_MPEG2_QSV_ENCODER)       += qsvenc_mpeg2.o
+@@ -536,12 +540,14 @@ OBJS-$(CONFIG_MPEG2_QSV_ENCODER)       += qsvenc_mpeg2.o
  OBJS-$(CONFIG_MPEG2VIDEO_DECODER)      += mpeg12dec.o mpeg12.o mpeg12data.o
  OBJS-$(CONFIG_MPEG2VIDEO_ENCODER)      += mpeg12enc.o mpeg12.o
  OBJS-$(CONFIG_MPEG2_CUVID_DECODER)     += cuviddec.o
@@ -195,73 +118,76 @@ index b3d284d..50ab6cd 100644
  OBJS-$(CONFIG_MPEG2_MEDIACODEC_DECODER) += mediacodecdec.o
  OBJS-$(CONFIG_MPEG2_VAAPI_ENCODER)     += vaapi_encode_mpeg2.o
  OBJS-$(CONFIG_MPEG2_V4L2M2M_DECODER)   += v4l2_m2m_dec.o
- OBJS-$(CONFIG_MPEG4_DECODER)           += xvididct.o
+ OBJS-$(CONFIG_MPEG4_DECODER)           += mpeg4videodsp.o xvididct.o
  OBJS-$(CONFIG_MPEG4_ENCODER)           += mpeg4videoenc.o
  OBJS-$(CONFIG_MPEG4_CUVID_DECODER)     += cuviddec.o
 +OBJS-$(CONFIG_MPEG4_NVMPI_DECODER)     += nvmpi_dec.o
  OBJS-$(CONFIG_MPEG4_MEDIACODEC_DECODER) += mediacodecdec.o
+ OBJS-$(CONFIG_MPEG4_MEDIACODEC_ENCODER) += mediacodecenc.o
  OBJS-$(CONFIG_MPEG4_OMX_ENCODER)       += omx.o
- OBJS-$(CONFIG_MPEG4_V4L2M2M_DECODER)   += v4l2_m2m_dec.o
-@@ -714,6 +720,7 @@ OBJS-$(CONFIG_VP6_DECODER)             += vp6.o vp56.o vp56data.o \
- OBJS-$(CONFIG_VP7_DECODER)             += vp8.o vp56rac.o
- OBJS-$(CONFIG_VP8_DECODER)             += vp8.o vp56rac.o
+@@ -770,6 +776,7 @@ OBJS-$(CONFIG_VP6_DECODER)             += vp6.o vp56.o vp56data.o \
+ OBJS-$(CONFIG_VP7_DECODER)             += vp8.o vp8data.o vpx_rac.o
+ OBJS-$(CONFIG_VP8_DECODER)             += vp8.o vp8data.o vpx_rac.o
  OBJS-$(CONFIG_VP8_CUVID_DECODER)       += cuviddec.o
 +OBJS-$(CONFIG_VP8_NVMPI_DECODER)       += nvmpi_dec.o
  OBJS-$(CONFIG_VP8_MEDIACODEC_DECODER)  += mediacodecdec.o
+ OBJS-$(CONFIG_VP8_MEDIACODEC_ENCODER)  += mediacodecenc.o
  OBJS-$(CONFIG_VP8_QSV_DECODER)         += qsvdec.o
- OBJS-$(CONFIG_VP8_RKMPP_DECODER)       += rkmppdec.o
-@@ -724,6 +731,7 @@ OBJS-$(CONFIG_VP9_DECODER)             += vp9.o vp9data.o vp9dsp.o vp9lpf.o vp9r
-                                           vp9block.o vp9prob.o vp9mvs.o vp56rac.o \
+@@ -781,6 +788,7 @@ OBJS-$(CONFIG_VP9_DECODER)             += vp9.o vp9data.o vp9dsp.o vp9lpf.o vp9r
+                                           vp9block.o vp9prob.o vp9mvs.o vpx_rac.o \
                                            vp9dsp_8bpp.o vp9dsp_10bpp.o vp9dsp_12bpp.o
  OBJS-$(CONFIG_VP9_CUVID_DECODER)       += cuviddec.o
 +OBJS-$(CONFIG_VP9_NVMPI_DECODER)       += nvmpi_dec.o
  OBJS-$(CONFIG_VP9_MEDIACODEC_DECODER)  += mediacodecdec.o
+ OBJS-$(CONFIG_VP9_MEDIACODEC_ENCODER)  += mediacodecenc.o
  OBJS-$(CONFIG_VP9_RKMPP_DECODER)       += rkmppdec.o
- OBJS-$(CONFIG_VP9_VAAPI_ENCODER)       += vaapi_encode_vp9.o
 diff --git a/libavcodec/allcodecs.c b/libavcodec/allcodecs.c
-index 2e9a358..f75ebca 100644
+index 5136a56..615b2d3 100644
 --- a/libavcodec/allcodecs.c
 +++ b/libavcodec/allcodecs.c
-@@ -148,11 +148,15 @@ extern AVCodec ff_h264_mediacodec_decoder;
- extern AVCodec ff_h264_mmal_decoder;
- extern AVCodec ff_h264_qsv_decoder;
- extern AVCodec ff_h264_rkmpp_decoder;
-+extern AVCodec ff_h264_nvmpi_decoder;
-+extern AVCodec ff_h264_nvmpi_encoder;
- extern AVCodec ff_hap_encoder;
- extern AVCodec ff_hap_decoder;
- extern AVCodec ff_hevc_decoder;
- extern AVCodec ff_hevc_qsv_decoder;
- extern AVCodec ff_hevc_rkmpp_decoder;
-+extern AVCodec ff_hevc_nvmpi_decoder;
-+extern AVCodec ff_hevc_nvmpi_encoder;
- extern AVCodec ff_hevc_v4l2m2m_decoder;
- extern AVCodec ff_hnm4_video_decoder;
- extern AVCodec ff_hq_hqa_decoder;
-@@ -818,19 +822,23 @@ extern AVCodec ff_mjpeg_vaapi_encoder;
- extern AVCodec ff_mp3_mf_encoder;
- extern AVCodec ff_mpeg1_cuvid_decoder;
- extern AVCodec ff_mpeg2_cuvid_decoder;
-+extern AVCodec ff_mpeg2_nvmpi_decoder;
- extern AVCodec ff_mpeg2_qsv_encoder;
- extern AVCodec ff_mpeg2_vaapi_encoder;
- extern AVCodec ff_mpeg4_cuvid_decoder;
-+extern AVCodec ff_mpeg4_nvmpi_decoder;
- extern AVCodec ff_mpeg4_mediacodec_decoder;
- extern AVCodec ff_mpeg4_omx_encoder;
- extern AVCodec ff_mpeg4_v4l2m2m_encoder;
- extern AVCodec ff_vc1_cuvid_decoder;
- extern AVCodec ff_vp8_cuvid_decoder;
-+extern AVCodec ff_vp8_nvmpi_decoder;
- extern AVCodec ff_vp8_mediacodec_decoder;
- extern AVCodec ff_vp8_qsv_decoder;
- extern AVCodec ff_vp8_v4l2m2m_encoder;
- extern AVCodec ff_vp8_vaapi_encoder;
- extern AVCodec ff_vp9_cuvid_decoder;
-+extern AVCodec ff_vp9_nvmpi_decoder;
- extern AVCodec ff_vp9_mediacodec_decoder;
- extern AVCodec ff_vp9_qsv_decoder;
- extern AVCodec ff_vp9_vaapi_encoder;
+@@ -158,11 +158,15 @@ extern const FFCodec ff_h264_mediacodec_encoder;
+ extern const FFCodec ff_h264_mmal_decoder;
+ extern const FFCodec ff_h264_qsv_decoder;
+ extern const FFCodec ff_h264_rkmpp_decoder;
++extern const FFCodec ff_h264_nvmpi_decoder;
++extern const FFCodec ff_h264_nvmpi_encoder;
+ extern const FFCodec ff_hap_encoder;
+ extern const FFCodec ff_hap_decoder;
+ extern const FFCodec ff_hevc_decoder;
+ extern const FFCodec ff_hevc_qsv_decoder;
+ extern const FFCodec ff_hevc_rkmpp_decoder;
++extern const FFCodec ff_hevc_nvmpi_decoder;
++extern const FFCodec ff_hevc_nvmpi_encoder;
+ extern const FFCodec ff_hevc_v4l2m2m_decoder;
+ extern const FFCodec ff_hnm4_video_decoder;
+ extern const FFCodec ff_hq_hqa_decoder;
+@@ -875,9 +879,11 @@ extern const FFCodec ff_mjpeg_vaapi_encoder;
+ extern const FFCodec ff_mp3_mf_encoder;
+ extern const FFCodec ff_mpeg1_cuvid_decoder;
+ extern const FFCodec ff_mpeg2_cuvid_decoder;
++extern const FFCodec ff_mpeg2_nvmpi_decoder;
+ extern const FFCodec ff_mpeg2_qsv_encoder;
+ extern const FFCodec ff_mpeg2_vaapi_encoder;
+ extern const FFCodec ff_mpeg4_cuvid_decoder;
++extern const FFCodec ff_mpeg4_nvmpi_decoder;
+ extern const FFCodec ff_mpeg4_mediacodec_decoder;
+ extern const FFCodec ff_mpeg4_mediacodec_encoder;
+ extern const FFCodec ff_mpeg4_omx_encoder;
+@@ -885,12 +891,14 @@ extern const FFCodec ff_mpeg4_v4l2m2m_encoder;
+ extern const FFCodec ff_prores_videotoolbox_encoder;
+ extern const FFCodec ff_vc1_cuvid_decoder;
+ extern const FFCodec ff_vp8_cuvid_decoder;
++extern const FFCodec ff_vp8_nvmpi_decoder;
+ extern const FFCodec ff_vp8_mediacodec_decoder;
+ extern const FFCodec ff_vp8_mediacodec_encoder;
+ extern const FFCodec ff_vp8_qsv_decoder;
+ extern const FFCodec ff_vp8_v4l2m2m_encoder;
+ extern const FFCodec ff_vp8_vaapi_encoder;
+ extern const FFCodec ff_vp9_cuvid_decoder;
++extern const FFCodec ff_vp9_nvmpi_decoder;
+ extern const FFCodec ff_vp9_mediacodec_decoder;
+ extern const FFCodec ff_vp9_mediacodec_encoder;
+ extern const FFCodec ff_vp9_qsv_decoder;
 diff --git a/libavcodec/nvmpi_dec.c b/libavcodec/nvmpi_dec.c
 new file mode 100644
 index 0000000..add9942
